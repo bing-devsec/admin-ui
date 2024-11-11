@@ -8,7 +8,7 @@
 import { useRouter } from 'vue-router';
 const router = useRouter();
 function exitLogin() {
-  router.push('/');
+  router.push('/login');
 }
 </script>
 
@@ -23,11 +23,8 @@ function exitLogin() {
   border: 2px solid #555;
   font-size: larger;
   width: 90px;
-  /* 设置你想要的宽度 */
   height: 45px;
-  /* 设置你想要的高度 */
   line-height: 45px;
-  /* 使文字垂直居中 */
   margin-right: 50px;
 }
 </style>

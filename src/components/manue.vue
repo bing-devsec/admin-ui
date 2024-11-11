@@ -1,39 +1,38 @@
 <template>
     <h2 class="mb-2">菜单</h2>
-    <el-menu :style="{ height: menuHeight + 'px' }" active-text-color="#ffd04b" background-color="#545c64"
-      class="el-menu-vertical-demo" text-color="#fff" :default-active="activeIndex" router>
+    <el-menu active-text-color="#ffd04b" background-color="#545c64" text-color="#fff" :default-active="activeIndex" router>
       
       <el-menu-item index="/home/writeDocument">
         <el-icon>
-          <DocumentAdd />
+          <documentAdd/>
         </el-icon>
         <span>写文章</span>
       </el-menu-item>
 
       <el-menu-item index="/home/manageDocument">
         <el-icon>
-          <Document />
+          <Document/>
         </el-icon>
         <span>文章管理</span>
       </el-menu-item>
 
       <el-menu-item index="/home/manageLabel">
         <el-icon>
-          <Management />
+          <Management/>
         </el-icon>
         <span>专栏管理</span>
       </el-menu-item>
 
       <el-menu-item index="/home/toolsConfig">
         <el-icon>
-          <Briefcase />
+          <Link/>
         </el-icon>
-        <span>工具栏信息</span>
+        <span>友链管理</span>
       </el-menu-item>
 
       <el-menu-item index="/home/aboutMe">
         <el-icon>
-          <Avatar />
+          <Avatar/>
         </el-icon>
         <span>关于我</span>
       </el-menu-item>
@@ -41,14 +40,7 @@
 </template>
 
 <script lang="ts" setup>
-import {
-  Document,
-  DocumentAdd,
-  Management,
-  Menu as IconMenu,
-  Avatar,
-  Briefcase,
-} from "@element-plus/icons-vue";
+import {DocumentAdd,Document,Management,Link,Avatar} from "@element-plus/icons-vue";
 import { ref, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 
@@ -58,22 +50,9 @@ let activeIndex = ref(route.path);
 watch(() => route.path, newPath => {
   activeIndex.value = newPath;
 });
-
-const menuHeight = ref(0);
-
-onMounted(() => {
-  updateMenuHeight();
-  window.addEventListener('resize', updateMenuHeight);
-});
-
-function updateMenuHeight() {
-  const otherElementsHeight = 95;
-  menuHeight.value = window.innerHeight - otherElementsHeight;
-}
 </script>
 
 <style scoped>
-
 .mb-2 {
   background-color: #545c64;
   color: white;
@@ -84,6 +63,7 @@ function updateMenuHeight() {
 }
 
 .el-menu {
+  height: 100%;
   overflow-y: hidden;
 }
 </style>

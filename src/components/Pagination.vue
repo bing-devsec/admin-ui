@@ -31,7 +31,7 @@ const handlePageChange = (newPage: number) => {
     justify-content: center;
     position: fixed;
     bottom: 0;
-    left: 13%;
+    left: 12%;
     right: 0px;
 }
 </style>

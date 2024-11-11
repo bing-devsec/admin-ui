@@ -53,9 +53,9 @@
         <!-- 这里一定要做双向数据绑定 -->
         <updateTools v-model:describe="describe" v-model:url="url" :tools_id="tools_id"></updateTools>
     </el-drawer>
-    <Pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
+    <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
         @handleCurrentChange="handleCurrentChange">
-    </Pagination>
+    </pagination>
 </template>
 
 <script lang="ts" setup>
@@ -64,7 +64,7 @@ import { ElMessageBox } from 'element-plus'
 import type { Action } from 'element-plus'
 import addTools from '../components/addTools.vue'
 import updateTools from '../components/updateTools.vue';
-import Pagination from '../components/Pagination.vue'
+import pagination from '../components/pagination.vue'
 import { useRouter } from "vue-router";
 
 const router = useRouter();

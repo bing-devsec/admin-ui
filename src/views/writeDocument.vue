@@ -9,9 +9,10 @@
 </template>
 
 <script lang="ts" setup>
-import submitBlog from '../components/submitBlog.vue';
 import { ref, onMounted } from 'vue';
 import { MdEditor } from 'md-editor-v3';
+import submitBlog from '../components/submit-blog.vue'; 
+
 import 'md-editor-v3/lib/style.css';
 import emitter from '../utils/event-bus.js'
 
@@ -54,7 +55,7 @@ function showBlog(data: any) {
 .writeBlog {
   display: flex;
   flex-shrink: 0;
-  height: calc(100vh - 60px);
+  height: calc(100vh);
   box-sizing: border-box;
   background-color: #fff;
   overflow: auto;

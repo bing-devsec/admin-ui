@@ -5,8 +5,7 @@
     <!-- label-width="auto"：设置表单域标签的宽度自动。 -->
     <!-- :label-position="labelPosition"：定义标签的位置。 -->
     <!-- :size="size"：用于改变该组件的默认尺寸。 -->
-    <el-form ref="form" :model="blog" label-width="auto" :label-position="labelPosition" :size="size"
-        style="margin-left: 20px">
+    <el-form ref="form" :model="blog" label-width="auto" :label-position="labelPosition" :size="size" style="margin-left: 20px">
         <!-- label：设置表单项的标签文本。 -->
         <el-form-item label="标题">
             <el-input style="width: 80%" v-model="blog.title" />

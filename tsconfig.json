@@ -1,12 +1,19 @@
 {
-  "compilerOptions": {
-    "lib": ["ES2015", "DOM"],
-  },
+    "compilerOptions": {
+        "lib": [
+            "ES2015",
+            "DOM"
+        ],
+        "allowJs": true,
+        "checkJs": false,
+        "outDir": "./dist",
+        "rootDir": "./src"
+    },
     "include": [
-      "src/**/*.ts",
-      "src/**/*.d.ts",
-      "src/**/*.tsx",
-      "src/**/*.vue",
-      "src/global.d.ts"
+        "src/**/*.ts",
+        "src/**/*.d.ts",
+        "src/**/*.tsx",
+        "src/**/*.vue",
+        "src/global.d.ts"
     ]
 }

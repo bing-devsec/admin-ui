@@ -16,9 +16,9 @@
         </div>
 
 
-        <Pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
+        <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
             @handleCurrentChange="handleCurrentChange">
-        </Pagination>
+        </pagination>
     </el-tabs>
 </template>
 
@@ -26,7 +26,7 @@
 
 import { ref, onMounted } from 'vue'
 import blogLabel from '../components/blogLabel.vue'
-import Pagination from '../components/Pagination.vue'
+import pagination from '../components/pagination.vue'
 import { useRouter } from "vue-router";
 
 const router = useRouter();
