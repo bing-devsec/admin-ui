@@ -7,7 +7,7 @@ export default defineConfig({
   base:'/',
   transpileDependencies: true,
   server: {
-    port: 9999, 
+    port: 4000, 
     open: true,
   },
   plugins: [vue()],

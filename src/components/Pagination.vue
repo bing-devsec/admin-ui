@@ -23,15 +23,14 @@ const handlePageChange = (newPage: number) => {
 
 <style scoped>
 .pagination-container {
-    border-top: 2px solid #666;
-    border-bottom: 2px solid #666;
+    border-top: 1px solid #666;
+    border-bottom: 1px solid #666;
     padding: 6px;
     background-color: white;
     display: flex;
     justify-content: center;
     position: fixed;
     bottom: 0;
-    left: 12%;
-    right: 0px;
+    width: 88%;
 }
 </style>

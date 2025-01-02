@@ -6,31 +6,36 @@
 					<p>管理员登录</p>
 				</div>
 				<div class="container">
-					<el-tabs class="demo-tabs" v-model="activeTab">
-						<el-tab-pane name="password-login">
-							<template #label><span>账号登录</span></template>
-							<div v-if="activeTab === 'password-login'">
-								<el-input v-model="username" clearable type="text" size="large"
-									placeholder="账号"></el-input>
-								<el-input v-model="password" clearable type="password" size="large"
-									placeholder="密码"></el-input>
-							</div>
-						</el-tab-pane>
-
-						<el-tab-pane name="sms-login">
-							<template #label><span>短信登录</span></template>
-							<div v-if="activeTab === 'sms-login'">
-								<el-input v-model="phone" clearable type="text" size="large"
-									placeholder="手机号"></el-input>
-								<div class="verification">
-									<el-input style="width: 60%" v-model="smsCode" clearable type="password"
-										size="large" placeholder="验证码"></el-input>
-									<el-button @click="sendCode" :disabled="isButtonDisabled">{{ buttonText
-										}}</el-button>
+					<form>
+						<el-tabs class="demo-tabs" v-model="activeTab">
+							<el-tab-pane name="password-login">
+								<template #label><span>账号登录</span></template>
+								<div v-if="activeTab === 'password-login'">
+									<el-input v-model="username" clearable type="text" size="large" placeholder="账号">
+									</el-input>
+									<el-input v-model="password" clearable type="password" size="large"
+										placeholder="密码">
+									</el-input>
 								</div>
-							</div>
-						</el-tab-pane>
-					</el-tabs>
+							</el-tab-pane>
+
+							<el-tab-pane name="sms-login">
+								<template #label><span>短信登录</span></template>
+								<div v-if="activeTab === 'sms-login'">
+									<el-input v-model="phone" clearable type="text" size="large"
+										placeholder="手机号"></el-input>
+									<div class="verification">
+										<el-input style="width: 60%" v-model="smsCode" clearable type="password"
+											size="large" placeholder="验证码">
+										</el-input>
+										<el-button @click="sendCode" :disabled="isButtonDisabled">
+											{{ buttonText }}
+										</el-button>
+									</div>
+								</div>
+							</el-tab-pane>
+						</el-tabs>
+					</form>
 				</div>
 				<div class="content-button">
 					<el-button plain type="primary" @click="SignIn">登录</el-button>
@@ -41,10 +46,9 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, watch, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElNotification } from "element-plus";
-import { AxiosResponse } from 'axios';
 import Ribbons from "../utils/ribbon.js";
 
 // 定义响应式数据
@@ -55,7 +59,6 @@ const phone = ref("");
 const smsCode = ref("");
 const countDown = ref(0); // 验证码倒计时
 const activeTab = ref("password-login"); // 默认登录方式
-const isPasswordLogin = ref(true); // 当前选中的登录方式，默认为账号登录
 const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
 
 let intervalId: NodeJS.Timeout | null = null;
@@ -64,178 +67,76 @@ let intervalId: NodeJS.Timeout | null = null;
 const passwordLogin = async () => {
 	if (!username.value || !password.value) {
 		ElNotification({
-			title: "错误",
+			title: "Warning",
 			message: "账号和密码不能为空",
-			type: "error",
+			type: "warning",
 		});
 		return;
 	}
-	const data = { username: username.value, password: password.value };
-	const accessToken = localStorage.getItem("accessToken");
-	console.log("accessToken: ", accessToken);
-
-	const refreshToken = localStorage.getItem("refreshToken");
-	console.log("refreshToken: ", refreshToken);
-
-
+	const reqData = { username: username.value, password: password.value };
 	try {
-		const response = await window.$axios.post("/admin/account-login", data, {
-			headers: { Authorization: `Bearer ${accessToken}` },
-		});
-
-		const code = response.data.code;
-		if (code !== 2000) {
-			ElNotification({
-				title: "错误",
-				message: "无效的账号或密码",
-				type: "error",
-			});
-		} else {
-			const userID = response.data.data;
-			console.log(userID);
-			localStorage.setItem("userID", userID);
-			Ribbons.stop();
-			router.push("/home/article/list");
-		}
-	} catch (error) {
-		console.log(error);
-		handleLoginError(error);
-	}
-};
-
-interface RefreshTokenResponse {
-	data: {
-		accessToken: string;
-		refreshToken: string;
-		userID: string;
-	};
-}
-
-
-// 账号登录的错误处理函数
-const handleLoginError = (error: any) => {
-	if (error.response) {
-		const { status, data } = error.response;
-		if (status === 200 && data) {
-			const { code, message } = data;
-			if (code === 4010 || code === 4011) {
-				router.push("/login");
-			} else if (code === 4012) {
-				const refreshToken = localStorage.getItem("refreshToken");
-				if (refreshToken) {
-					window.$axios
-					.post("/admin/refresh-token", null, {
-						headers: { Authorization: `Bearer ${refreshToken}` },
-					})
-					.then((response: AxiosResponse<RefreshTokenResponse>) => {
-						const { accessToken, refreshToken, userID } = response.data.data || {};
-						localStorage.setItem("accessToken", accessToken);
-						localStorage.setItem("refreshToken", refreshToken);
-						localStorage.setItem("userID", userID);
-						window.$axios.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-						router.push("/home/article/list");
-					})
-					.catch(() => {
-						router.push("/login");
-					});
-				} else {
-					router.push("/login");
-				}
-			} else if (code === 5000) {
-				ElNotification({
-					title: "错误",
-					message: message,
-					type: "error",
-				});
-			} else if (code === 4000) {
-				ElNotification({
-					title: "错误",
-					message: message,
-					type: "error",
-				});
-			} else {
-				ElNotification({
-					title: "错误",
-					message: message,
-					type: "error",
-				});
-			}
-		} else {
-			ElNotification({
-				title: "错误",
-				message: error,
-				type: "error",
-			});
-		}
-	} else {
-		ElNotification({
-			title: "错误",
-			message: error,
-			type: "error",
-		});
-		console.error("erros: ", error);
-	}
-};
-
-
-const smsLogin = async () => {
-	// 校验手机号和验证码不能为空
-	if (!phone.value || !smsCode.value) {
-		ElNotification({
-			title: "错误",
-			message: "手机号和验证码不能为空",
-			type: "error",
-		});
-		return;
-	}
-
-	const reqData = { phone: phone.value, code: smsCode.value };
-
-	try {
-		const response = await window.$axios.post("/admin/sms-login", reqData);
+		const response = await window.$axios.post("/admin/account-login", reqData);
 		const { code, message, data } = response.data;
 		const { accessToken, refreshToken, userID } = data || {};
-
-		if (code === 2000) {
-			// 登录成功
+		if (code !== 2000 || message !== "") {
+			ElNotification({
+				title: "Failed",
+				message: "登录失败",
+				type: "error",
+			});
+		} else {
 			localStorage.setItem("accessToken", accessToken);
 			localStorage.setItem("refreshToken", refreshToken);
 			localStorage.setItem("userID", userID);
 
 			Ribbons.stop();
-			router.push("/home/article/list");
+			router.push("/home/manage-article");
+		}
+	} catch (error) {
+		ElNotification({
+			title: "Error",
+			message: error,
+			type: "error",
+		});
+	}
+};
 
-			ElNotification({
-				title: "成功",
-				message: "登录成功",
-				type: "success",
-			});
-		} else if (code === 4000) {
-			ElNotification({
-				title: "错误",
-				message: "手机号或验证码错误",
-				type: "error",
-			});
-		} else if (code === 5000) {
-			ElNotification({
-				title: "错误",
-				message: "登录失败，请稍后再试",
-				type: "error",
-			});
+const smsLogin = async () => {
+	if (!phone.value || !smsCode.value) {
+		ElNotification({
+			title: "Warning",
+			message: "手机号和验证码不能为空",
+			type: "warning",
+		});
+		return;
+	}
+
+	const reqData = { phone: phone.value, code: smsCode.value };
+	try {
+		const response = await window.$axios.post("/admin/sms-login", reqData);
+		const { code, message, data } = response.data;
+		const { accessToken, refreshToken, userID } = data || {};
+
+		if (code === 2000 && message === "") {
+			localStorage.setItem("accessToken", accessToken);
+			localStorage.setItem("refreshToken", refreshToken);
+			localStorage.setItem("userID", userID);
+
+			Ribbons.stop();
+			router.push("/home/manage-article");
 		} else {
 			ElNotification({
-				title: "错误",
-				message: message,
+				title: "Failed",
+				message: "登录失败",
 				type: "error",
 			});
 		}
 	} catch (error) {
 		ElNotification({
-			title: "错误",
+			title: "Error",
 			message: error,
 			type: "error",
 		});
-		console.error(error);
 	}
 };
 
@@ -247,8 +148,7 @@ const sendCode = async () => {
 		try {
 			const response = await window.$axios.post("/admin/sms-code", data);
 			const { code, message } = response.data;
-
-			if (code === 2000) {
+			if (code === 2000 && message === "") {
 				countDown.value = 60;
 				intervalId = setInterval(() => {
 					if (countDown.value > 0) {
@@ -259,40 +159,33 @@ const sendCode = async () => {
 				}, 1000);
 
 				ElNotification({
-					title: "成功",
+					title: "Success",
 					message: "验证码发送成功",
 					type: "success",
 				});
 			} else if (code === 4000) {
 				ElNotification({
-					title: "错误",
+					title: "Failed",
 					message: "无效的手机号",
-					type: "error",
-				});
-			} else if (code === 5000) {
-				ElNotification({
-					title: "错误",
-					message: "验证码发送失败，请稍后再试",
 					type: "error",
 				});
 			} else {
 				ElNotification({
-					title: "错误",
-					message: message,
+					title: "Failed",
+					message: "登录失败",
 					type: "error",
 				});
 			}
 		} catch (error) {
 			ElNotification({
-				title: "错误",
+				title: "Error",
 				message: error,
 				type: "error",
 			});
-			console.error(error);
 		}
 	} else {
 		ElNotification({
-			title: "错误",
+			title: "Error",
 			message: "请输入有效的手机号码",
 			type: "error",
 		});
@@ -310,18 +203,22 @@ const isButtonDisabled = computed(() => {
 	return !isPhoneValid(phone.value) || countDown.value > 0;
 });
 
-// 切换登录方式
-const toggleLoginMethod = () => {
-	isPasswordLogin.value = !isPasswordLogin.value;
-	if (activeTab.value === 'sms-login') {
-		isPasswordLogin.value = false;
-	}
-};
-
-
 // 开始动画
 onMounted(() => {
 	Ribbons.start();
+});
+
+// 监听 activeTab 的变化
+watch(activeTab, () => {
+	username.value = "";
+	password.value = "";
+	phone.value = "";
+	smsCode.value = "";
+	if (intervalId) {
+		clearInterval(intervalId);
+		intervalId = null;
+	}
+	countDown.value = 0;
 });
 
 // 返回登录方式函数
@@ -329,8 +226,6 @@ const SignIn = computed(() => {
 	return activeTab.value === 'password-login' ? passwordLogin : smsLogin;
 });
 </script>
-
-
 
 <style scoped>
 .content {
@@ -352,6 +247,7 @@ const SignIn = computed(() => {
 	max-height: 100%;
 	overflow-y: auto;
 	margin-bottom: 20px;
+	margin-top: -10px;
 }
 
 @keyframes mymove {

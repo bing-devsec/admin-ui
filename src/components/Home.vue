@@ -1,12 +1,12 @@
 <script lang="ts" setup>
-import { RouterLink, RouterView } from "vue-router";
+import { RouterView } from "vue-router";
 import manue from "./manue.vue";
 </script>
 
 <template>
 	<div class="common-layout">
 		<el-container class="inner-container">
-			<el-aside width="12%">
+			<el-aside>
 				<manue></manue>
 			</el-aside>
 			<el-main>
@@ -15,7 +15,6 @@ import manue from "./manue.vue";
 		</el-container>
 	</div>
 </template>
-
 
 <style>
 .inner-container {
@@ -27,6 +26,8 @@ import manue from "./manue.vue";
 	color: #333;
 	text-align: center;
 	overflow-y: hidden !important;
+	width: 12% !important;
+	min-width: 135px;
 }
 
 .el-main {
