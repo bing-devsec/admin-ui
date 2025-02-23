@@ -10,7 +10,7 @@
 						<span>按发布时间</span>
 					</span>
 				</template>
-				<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"></articleManageTab>
+				<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize" @refreshData="refreshCurrentPageData"></articleManageTab>
 			</el-tab-pane>
 
 			<el-tab-pane name="按浏览量" label="按浏览量">
@@ -22,7 +22,7 @@
 						<span>按浏览量</span>
 					</span>
 				</template>
-				<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"></articleManageTab>
+				<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize" @refreshData="refreshCurrentPageData"></articleManageTab>
 			</el-tab-pane>
 		</el-tabs>
 	</div>
@@ -54,7 +54,7 @@ const fetchData = async (order: string) => {
 			params: { order, page: currentPage.value, pageSize: pageSize },
 		});
 
-		if (response.data.code === 2000) {
+		if (response.data.code === 2000&& response.data.message === "") {
 			tabData.value = response.data.data.rows;
 			total.value = response.data.data.total;
 		} else {
@@ -86,6 +86,10 @@ watch(activeTab, (newTab) => {
 let handleCurrentChange = (newPage: number) => {
 	currentPage.value = newPage;
 	fetchData(activeTab.value === '按发布时间' ? 'time' : 'view');
+};
+
+const refreshCurrentPageData = async () => {
+  await fetchData(activeTab.value === '按发布时间' ? 'time' : 'view');
 };
 
 // 初始加载数据

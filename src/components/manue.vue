@@ -49,7 +49,7 @@
 
 <script lang="ts" setup>
 import { DocumentAdd, Document, Management, Link, Avatar, Back } from "@element-plus/icons-vue";
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();

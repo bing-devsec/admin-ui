@@ -18,17 +18,49 @@
 
         <!-- 网站信息 -->
         <el-form-item label="域名信息" prop="domainInfo">
-            <el-input style="width: 60%;" v-model="aboutMe.domainInfo" clearable />
-        </el-form-item>
-        <el-form-item label="博客内容" prop="blogContent">
-            <el-input style="width: 60%;" v-model="aboutMe.blogContent" clearable />
-        </el-form-item>
-        <el-form-item label="本站定位" prop="websiteLocation">
-            <el-input style="width: 60%;" v-model="aboutMe.websiteLocation" clearable />
-        </el-form-item>
-        <el-form-item label="免责声明" prop="statement">
-            <el-input style="width: 60%;" v-model="aboutMe.statement" clearable />
-        </el-form-item>
+    <el-input
+      type="textarea"
+      :autosize="{ minRows: 2, maxRows: 10 }"
+      style="width: 60%;"
+      v-model="aboutMe.domainInfo"
+      :maxlength="100"
+      show-word-limit
+      clearable
+    />
+  </el-form-item>
+  <el-form-item label="博客内容" prop="blogContent">
+    <el-input
+      type="textarea"
+      :autosize="{ minRows: 3, maxRows: 14 }"
+      style="width: 60%;"
+      v-model="aboutMe.blogContent"
+      :maxlength="200"
+      show-word-limit
+      clearable
+    />
+  </el-form-item>
+  <el-form-item label="本站定位" prop="websiteLocation">
+    <el-input
+      type="textarea"
+      :autosize="{ minRows: 3, maxRows: 14 }"
+      style="width: 60%;"
+      v-model="aboutMe.websiteLocation"
+      :maxlength="200"
+      show-word-limit
+      clearable
+    />
+  </el-form-item>
+  <el-form-item label="免责声明" prop="statement">
+    <el-input
+      type="textarea"
+      :autosize="{ minRows: 5, maxRows: 20 }"
+      style="width: 60%;"
+      v-model="aboutMe.statement"
+      :maxlength="500"
+      show-word-limit
+      clearable
+    />
+  </el-form-item>
 
         <!-- 联系我信息 -->
         <el-form-item label="邮箱" prop="email">
@@ -39,8 +71,8 @@
         </el-form-item>
 
         <el-form-item class="submit-button-wrapper">
-  <el-button type="primary" @click="onSubmit" style="margin-left: 70px;">提交</el-button>
-</el-form-item>
+            <el-button type="primary" @click="onSubmit" style="margin-left: 70px;">提交</el-button>
+        </el-form-item>
     </el-form>
 </template>
 
@@ -64,6 +96,19 @@ const aboutMe = reactive({
     statement: '',
     email: [] as string[],
 })
+
+const initialAboutMe = {
+    id: '',
+    name: '冰冰同学',
+    job: '',
+    workLife: '',
+    address: '',
+    domainInfo: '',
+    blogContent: '',
+    websiteLocation: '',
+    statement: '',
+    email: [],
+};
 
 const rules = {
     email: [
@@ -95,7 +140,6 @@ function isValidEmail(email: string): boolean {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(email);
 }
-
 
 function validateLength(data: any, maxLength: number): boolean {
     return JSON.stringify(data).length <= maxLength;
@@ -163,8 +207,7 @@ async function onSubmit() {
                 message: "提交成功",
                 type: "success",
             });
-            // 重置表单内容
-            Object.assign(aboutMe);
+            Object.assign(aboutMe, initialAboutMe);
         } else {
             ElNotification({
                 title: "Failed",
@@ -184,6 +227,6 @@ async function onSubmit() {
 
 <style scoped>
 .submit-button-wrapper {
-  margin-top:50px;
+    margin-top: 50px;
 }
 </style>

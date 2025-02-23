@@ -11,7 +11,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, watch, nextTick } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { MdEditor } from 'md-editor-v3';
 import SubmitArticle from '../components/submit-article.vue';
 import emitter from '../utils/event-bus.js'
@@ -28,6 +28,7 @@ let title = ref('');
 let describe = ref('');
 let content = ref('');
 let displayContent = ref('');
+
 
 watch(displayContent, (newValue) => {
     content.value = newValue.replace(/\t/g, '    ');

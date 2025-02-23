@@ -1,5 +1,5 @@
 <template>
-    <el-table :data="data" @selection-change="handleSelectionChange">
+    <el-table :data="data" @selection-change="handleSelectionChange" class="monospace-column">
         <el-table-column type="selection" width="50"></el-table-column>
         <el-table-column label="序号" min-width="60" max-width="100">
             <template #default="scope">
@@ -44,14 +44,14 @@
 <script lang="ts" setup>
 import { ref, computed, toRefs } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElNotification } from 'element-plus'
 import emitter from '../utils/event-bus.js'
 import _axios from '../utils/axios';
 const router = useRouter();
 
-const emit = defineEmits(['selection-change']);
+const emit = defineEmits(['selection-change', 'refresh']);
 const handleSelectionChange = (selection: any[]) => {
-  emit('selection-change', selection);
+    emit('selection-change', selection);
 };
 
 interface Article {
@@ -62,10 +62,6 @@ interface Article {
     createTime: string;
     updateTime: string;
 }
-
-// 接收父组件传递的数据
-// const props = defineProps<{ data: Article[]; currentPage: number }>();
-// const { data, currentPage } = toRefs(props);
 
 const props = defineProps<{
     data: Article[];
@@ -87,7 +83,7 @@ async function fetchArticleDetails(id: string) {
             params: { id: id },
         });
 
-        const { code, message, data } = response.data;
+        const { code, message } = response.data;
         if (code === 2000 && message === "") {
             return response.data;
         } else {
@@ -168,14 +164,14 @@ async function handleDelete(index: number, row: Article) {
         const response = await _axios.delete(`/admin/article/delete`, {
             params: { id: row.id },
         });
-        const { code, message, data } = response.data;
+        const { code, message } = response.data;
         if (code === 2000 && message === "") {
-            data.value.splice(index, 1);
             ElNotification({
                 title: "Success",
                 message: "删除文章成功",
                 type: "success",
             });
+            emit('refresh');
         } else {
             ElNotification({
                 title: "Failed",
@@ -197,6 +193,10 @@ async function handleDelete(index: number, row: Article) {
 .el-table th,
 .el-table td {
     white-space: nowrap;
+}
+
+.monospace-column {
+    font-family: monospace;
 }
 
 .action-buttons {

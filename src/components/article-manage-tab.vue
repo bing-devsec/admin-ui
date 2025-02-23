@@ -1,5 +1,5 @@
 <template>
-    <el-table :data="data" style="width: 100%">
+    <el-table :data="data" style="width: 100%" class="monospace-column">
         <el-table-column label="序号" min-width="60" max-width="100">
             <template #default="scope">
                 <div style="display: flex; align-items: center">
@@ -22,7 +22,7 @@
                 <span>{{ scope.row.viewNum }}</span>
             </template>
         </el-table-column>
-        <el-table-column label="发布时间" min-width="145" max-width="150" show-overflow-tooltip>
+        <el-table-column label="发布时间" min-width="145" max-width="150" show-overflow-tooltip >
             <template #default="scope">
                 <span>{{ scope.row.createTime }}</span>
             </template>
@@ -69,6 +69,7 @@ const props = defineProps<{
     pageSize: number;
 }>();
 const { data, currentPage, pageSize } = toRefs(props);
+const emit = defineEmits(['refreshData']);
 
 const id = ref("");
 const title = ref("");
@@ -164,9 +165,9 @@ async function handleDelete(index: number, row: Article) {
         const response = await _axios.delete(`/admin/article/delete`, {
             params: { id: row.id },
         });
-        const { code, message, data } = response.data;
+        const { code, message } = response.data;
         if (code === 2000 && message === "") {
-            data.value.splice(index, 1);
+            emit('refreshData');
             ElNotification({
                 title: "Success",
                 message: "删除文章成功",
@@ -193,6 +194,10 @@ async function handleDelete(index: number, row: Article) {
 .el-table th,
 .el-table td {
     white-space: nowrap;
+}
+
+.monospace-column {
+    font-family: monospace;
 }
 
 .action-buttons {

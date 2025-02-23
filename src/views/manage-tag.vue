@@ -4,18 +4,21 @@
             <div class="button-container">
                 <el-button type="primary" @click="openDialog" :disabled="!selectedID.length">修改标签</el-button>
             </div>
-            <el-tab-pane v-if="isReady" v-for="tag in tags" :key="tag" :label="tag" :name="tag" class="el-tabs">
-                <tagArticleList :data="articleList" :currentPage="currentPage" :pageSize="pageSize"
-                    @selection-change="handleSelectionChange"></tagArticleList>
-            </el-tab-pane>
+
+            <!-- 表格容器 -->
+            <div class="table-container">
+                <el-tab-pane v-if="isReady" v-for="tag in tags" :key="tag" :label="tag" :name="tag">
+                    <tagArticleList :data="articleList" :currentPage="currentPage" :pageSize="pageSize"
+                        @selection-change="handleSelectionChange" @refresh="fetchArticleList"></tagArticleList>
+                </el-tab-pane>
+            </div>
         </div>
+
+        <updateTag v-if="dialogVisible" :visible="dialogVisible" @update:visible="dialogVisible = $event"
+            :selectedID="selectedID" :currentTag="activeTag" @update:refresh="handleTagRefresh"></updateTag>
 
         <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
             @handleCurrentChange="handleCurrentChange"></pagination>
-
-        <!-- 弹窗组件 -->
-        <updateTag v-if="dialogVisible" :visible="dialogVisible" @update:visible="dialogVisible = $event"
-            :selectedID="selectedID" :currentTag="activeTag" @update:refresh="handleTagRefresh"></updateTag>
     </el-tabs>
 </template>
 
@@ -48,14 +51,18 @@ onMounted(async () => {
     })
 })
 
-const fetchTagList = async () => {
+const fetchTagList = async (currentActiveTag: string = '') => {
     try {
         const response = await _axios.get('/admin/tag/list');
         const { code, message, data } = response.data;
         if (code === 2000 && message === "") {
             tags.value = data;
             if (tags.value.length > 0) {
-                activeTag.value = tags.value[0];
+                if (currentActiveTag && tags.value.includes(currentActiveTag)) {
+                    activeTag.value = currentActiveTag;
+                } else {
+                    activeTag.value = tags.value[0];
+                }
                 await fetchArticleList();
             }
         } else {
@@ -119,28 +126,37 @@ const openDialog = () => {
 }
 
 const handleTagRefresh = async () => {
-    await fetchTagList();
-    await fetchArticleList();
+    await fetchTagList(activeTag.value);
 };
 </script>
 
-<style>
-.el-tabs__nav-scroll {
-    --el-tabs-header-height: 50px;
-}
-
+<style scoped>
 .tabs-container {
     display: flex;
     flex-direction: column;
+    height: 100%;
+}
+
+.table-container {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 46px;
 }
 
 .button-container {
     margin-bottom: 15px;
     margin-left: 15px;
+}
 
+.el-tabs {
+    --el-tabs-header-height: 50px;
+}
+
+:deep(.el-tabs__nav) {
+    margin: 0 15px;
 }
 
 .el-tabs__item {
-    padding: 24px 20px !important;
+    padding: 0 24px;
 }
 </style>

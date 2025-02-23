@@ -3,31 +3,34 @@
         <div class="button-container">
             <el-button type="primary" @click="openDialog">添加友链</el-button>
         </div>
-        <el-table :data="paginatedLinkList" style="width: 100%">
-            <el-table-column label="序号" min-width="60" max-width="100">
-                <template #default="scope">
-                    <span>{{ (currentPage - 1) * pageSize + scope.$index + 1 }}</span>
-                </template>
-            </el-table-column>
-            <el-table-column label="名称" min-width="260" max-width="320" show-overflow-tooltip>
-                <template #default="scope">
-                    <span>{{ scope.row.name }}</span>
-                </template>
-            </el-table-column>
-            <el-table-column label="URL" min-width="260" max-width="320" show-overflow-tooltip>
-                <template #default="scope">
-                    <span>{{ scope.row.url }}</span>
-                </template>
-            </el-table-column>
-            <el-table-column label="操作" min-width="145" max-width="150">
-                <template #default="scope">
-                    <div class="action-buttons">
-                        <el-button size="default" @click="handleEdit(scope.row)">编辑</el-button>
-                        <el-button size="default" type="danger" @click="open(scope.$index, scope.row)">删除</el-button>
-                    </div>
-                </template>
-            </el-table-column>
-        </el-table>
+        <div class="table-container">
+            <el-table :data="paginatedLinkList" style="width: 100%" class="monospace-column">
+                <el-table-column label="序号" min-width="60" max-width="100">
+                    <template #default="scope">
+                        <span>{{ (currentPage - 1) * pageSize + scope.$index + 1 }}</span>
+                    </template>
+                </el-table-column>
+                <el-table-column label="名称" min-width="260" max-width="320" show-overflow-tooltip>
+                    <template #default="scope">
+                        <span>{{ scope.row.name }}</span>
+                    </template>
+                </el-table-column>
+                <el-table-column label="URL" min-width="260" max-width="320" show-overflow-tooltip>
+                    <template #default="scope">
+                        <span>{{ scope.row.url }}</span>
+                    </template>
+                </el-table-column>
+                <el-table-column label="操作" min-width="145" max-width="150">
+                    <template #default="scope">
+                        <div class="action-buttons">
+                            <el-button size="default" @click="handleEdit(scope.row)">编辑</el-button>
+                            <el-button size="default" type="danger"
+                                @click="open(scope.$index, scope.row)">删除</el-button>
+                        </div>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </div>
     </div>
     <addLink :visible="dialogVisible" @update:visible="dialogVisible = $event" @update:refresh="fetchLinkList">
     </addLink>
@@ -77,6 +80,12 @@ const handleCurrentChange = (newPage: number) => {
     currentPage.value = newPage;
 };
 
+const totalPages = computed(() => Math.ceil(total.value / pageSize));
+const fetchPageData = async (page: number) => {
+  currentPage.value = page;
+  await fetchLinkList();
+};
+
 const fetchLinkList = async () => {
     try {
         const response = await _axios.get('/admin/link/list');
@@ -84,11 +93,10 @@ const fetchLinkList = async () => {
         if (code === 2000 && message === "") {
             linkList.value = data.rows || [];
             total.value = data.rows ? data.rows.length : 0;
-            currentPage.value = 1;
         } else {
             ElNotification({
                 title: "Failed",
-                message: "获取工具列表失败",
+                message: "获取友链列表失败",
                 type: "error",
             });
         }
@@ -148,7 +156,7 @@ const handleDelete = async (index: number, row: Link) => {
         const { code, message } = response.data;
 
         if (code === 2000 && message === "") {
-            linkList.value.splice(index, 1);
+            await fetchPageData(currentPage.value);
             ElNotification({
                 title: "Success",
                 message: "删除友链成功",
@@ -172,19 +180,30 @@ const handleDelete = async (index: number, row: Link) => {
 </script>
 
 <style scoped>
-.el-tabs__nav-scroll {
-    --el-tabs-header-height: 50px;
+.monospace-column {
+    font-family: monospace;
 }
 
 .tabs-container {
     display: flex;
     flex-direction: column;
+    height: 100%;
+}
+
+.table-container {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 46px;
 }
 
 .button-container {
-    margin-top: 15px;
-    margin-bottom: 15px;
+    margin-top: 9px;
+    margin-bottom: 9px;
     margin-left: 15px;
+}
+
+.el-tabs__nav-scroll {
+    --el-tabs-header-height: 50px;
 }
 
 .el-tabs__item {

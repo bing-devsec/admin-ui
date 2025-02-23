@@ -23,6 +23,7 @@ const handlePageChange = (newPage: number) => {
 
 <style scoped>
 .pagination-container {
+    z-index: 1000;
     border-top: 1px solid #666;
     border-bottom: 1px solid #666;
     padding: 6px;
