@@ -2,8 +2,7 @@ import axios from 'axios';
 import router from '@/router';
 
 const config =  {
-    // baseURL: 'http://127.0.0.1:8080',
-    baseURL: '/api',
+    baseURL: 'http://127.0.0.1:8080',
     headers:{
         'Content-Type':'application/json;charset=utf-8',
     },

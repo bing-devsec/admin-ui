@@ -10,12 +10,19 @@
 						<el-tabs class="demo-tabs" v-model="activeTab">
 							<el-tab-pane name="password-login">
 								<template #label><span>账号登录</span></template>
-								<div v-if="activeTab === 'password-login'">
-									<el-input v-model="username" clearable type="text" size="large" placeholder="账号">
-									</el-input>
+								<!-- 默认显示用户名和密码输入框 -->
+								<div v-if="!show2FA">
+									<el-input v-model="username" clearable type="text" size="large"
+										placeholder="账号"></el-input>
 									<el-input v-model="password" clearable type="password" size="large"
-										placeholder="密码">
-									</el-input>
+										placeholder="密码"></el-input>
+								</div>
+
+								<div v-if="show2FA">
+									<p>请使用 Microsoft Authenticator 扫描二维码进行绑定</p>
+									<el-image :src="qrCodeURL" style="max-width: 120px; max-height: 120px;" />
+									<el-input v-model="dynamicCode" clearable type="text" size="large"
+										placeholder="请输入6位动态验证码"></el-input>
 								</div>
 							</el-tab-pane>
 
@@ -37,7 +44,7 @@
 						</el-tabs>
 					</form>
 				</div>
-				<div class="content-button">
+				<div>
 					<el-button plain type="primary" @click="SignIn">登录</el-button>
 				</div>
 			</div>
@@ -46,7 +53,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, computed, onMounted } from "vue";
+import { ref, watch, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElNotification } from "element-plus";
 import Ribbons from "../utils/ribbon.js";
@@ -56,12 +63,28 @@ const router = useRouter();
 const username = ref("");
 const password = ref("");
 const phone = ref("");
-const smsCode = ref("");
-const countDown = ref(0); // 验证码倒计时
-const activeTab = ref("password-login"); // 默认登录方式
+const smsCode = ref(""); // 短信验证码
+const countDown = ref(0);
+const show2FA = ref(false);
+const dynamicCode = ref("");
+const qrCodeURL = ref('');
+const activeTab = ref("password-login");
 const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
 
 let intervalId: NodeJS.Timeout | null = null;
+
+// 返回登录方式函数
+const SignIn = computed(() => {
+	if (activeTab.value === 'password-login') {
+		if (show2FA.value) {
+			return verifyDynamicCode;
+		} else {
+			return passwordLogin;
+		}
+	} else {
+		return smsLogin;
+	}
+});
 
 // 账号登录
 const passwordLogin = async () => {
@@ -77,7 +100,6 @@ const passwordLogin = async () => {
 	try {
 		const response = await window.$axios.post("/admin/account-login", reqData);
 		const { code, message, data } = response.data;
-		const { accessToken, refreshToken, userID } = data || {};
 		if (code !== 2000 || message !== "") {
 			ElNotification({
 				title: "Failed",
@@ -85,12 +107,12 @@ const passwordLogin = async () => {
 				type: "error",
 			});
 		} else {
-			localStorage.setItem("accessToken", accessToken);
-			localStorage.setItem("refreshToken", refreshToken);
-			localStorage.setItem("userID", userID);
-
-			Ribbons.stop();
-			router.push("/home/manage-article");
+			if (data && data.qrCodeURL) {
+				qrCodeURL.value = data.qrCodeURL;
+				show2FA.value = true;
+			} else {
+				handleLoginSuccess(data);
+			}
 		}
 	} catch (error) {
 		ElNotification({
@@ -99,6 +121,49 @@ const passwordLogin = async () => {
 			type: "error",
 		});
 	}
+};
+
+// verifyDynamicCode 添加验证动态码的函数
+const verifyDynamicCode = async () => {
+	if (!dynamicCode.value) {
+		ElNotification({
+			title: "Warning",
+			message: "请输入动态验证码",
+			type: "warning",
+		});
+		return;
+	}
+	const reqData = { dynamicCode: dynamicCode.value };
+	try {
+		const response = await window.$axios.post("/admin/verify-dynamic-code", reqData);
+		const { code, message, data } = response.data;
+		if (code === 2000 && message === "") {
+			handleLoginSuccess(data);
+		} else {
+			ElNotification({
+				title: "Failed",
+				message: "验证失败",
+				type: "error",
+			});
+		}
+	} catch (error) {
+		ElNotification({
+			title: "Error",
+			message: error,
+			type: "error",
+		});
+	}
+};
+
+// handleLoginSuccess 处理登录成功的函数
+const handleLoginSuccess = (data: {}) => {
+	const { accessToken, refreshToken, userID } = data || {};
+	localStorage.setItem("accessToken", accessToken);
+	localStorage.setItem("refreshToken", refreshToken);
+	localStorage.setItem("userID", userID);
+
+	Ribbons.stop();
+	router.push("/home/manage-article");
 };
 
 const smsLogin = async () => {
@@ -214,23 +279,24 @@ watch(activeTab, () => {
 	password.value = "";
 	phone.value = "";
 	smsCode.value = "";
+	dynamicCode.value = "";
+
 	if (intervalId) {
 		clearInterval(intervalId);
 		intervalId = null;
 	}
 	countDown.value = 0;
 });
-
-// 返回登录方式函数
-const SignIn = computed(() => {
-	return activeTab.value === 'password-login' ? passwordLogin : smsLogin;
-});
 </script>
 
 <style scoped>
+.otp-container {
+	margin-top: 20px;
+}
+
 .content {
-	width: 520px;
-	height: 350px;
+	width: 700px;
+	height: 460px;
 	border-radius: 5px;
 	box-shadow: 0px 2px 12px 0px rgba(105, 105, 105, 0.07);
 	background: rgba(255, 255, 255, 0.5);
@@ -343,7 +409,7 @@ const SignIn = computed(() => {
 }
 
 .content_input {
-	width: 340px;
+	width: 380px;
 	position: absolute;
 	top: 50%;
 	left: 50%;
