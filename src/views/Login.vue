@@ -18,9 +18,12 @@
 										placeholder="密码"></el-input>
 								</div>
 
-								<div v-if="show2FA">
+								<div v-if="show2FA && qrCodeURL" class="twoFA">
 									<p>请使用 Microsoft Authenticator 扫描二维码进行绑定</p>
-									<el-image :src="qrCodeURL" style="max-width: 120px; max-height: 120px;" />
+									<el-image :src="qrCodeURL" class="qr-code" />
+								</div>
+
+								<div v-if="show2FA && !qrCodeURL">
 									<el-input v-model="dynamicCode" clearable type="text" size="large"
 										placeholder="请输入6位动态验证码"></el-input>
 								</div>
@@ -44,8 +47,8 @@
 						</el-tabs>
 					</form>
 				</div>
-				<div>
-					<el-button plain type="primary" @click="SignIn">登录</el-button>
+				<div class="button">
+					<el-button plain type="primary" @click="handleButtonClick">{{ loginButtonText }}</el-button>
 				</div>
 			</div>
 		</div>
@@ -63,28 +66,33 @@ const router = useRouter();
 const username = ref("");
 const password = ref("");
 const phone = ref("");
-const smsCode = ref(""); // 短信验证码
+const smsCode = ref("");
 const countDown = ref(0);
 const show2FA = ref(false);
 const dynamicCode = ref("");
 const qrCodeURL = ref('');
 const activeTab = ref("password-login");
 const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
+const loginButtonText = ref("继续");
 
 let intervalId: NodeJS.Timeout | null = null;
 
 // 返回登录方式函数
-const SignIn = computed(() => {
+const handleButtonClick = () => {
 	if (activeTab.value === 'password-login') {
-		if (show2FA.value) {
-			return verifyDynamicCode;
+		if (!show2FA.value) {
+			passwordLogin();
+		} else if (qrCodeURL.value) {
+			show2FA.value = true;
+			qrCodeURL.value = '';
+			loginButtonText.value = "登录";
 		} else {
-			return passwordLogin;
+			verifyDynamicCode();
 		}
 	} else {
-		return smsLogin;
+		smsLogin();
 	}
-});
+};
 
 // 账号登录
 const passwordLogin = async () => {
@@ -107,11 +115,14 @@ const passwordLogin = async () => {
 				type: "error",
 			});
 		} else {
-			if (data && data.qrCodeURL) {
+			if (data && data.qrCodeURL && data.userID) {
+				localStorage.setItem("userID", userID);
 				qrCodeURL.value = data.qrCodeURL;
 				show2FA.value = true;
+				loginButtonText.value = "已绑定完成";
 			} else {
-				handleLoginSuccess(data);
+				show2FA.value = true;
+				loginButtonText.value = "登录";
 			}
 		}
 	} catch (error) {
@@ -123,7 +134,7 @@ const passwordLogin = async () => {
 	}
 };
 
-// verifyDynamicCode 添加验证动态码的函数
+// 验证动态验证码
 const verifyDynamicCode = async () => {
 	if (!dynamicCode.value) {
 		ElNotification({
@@ -155,7 +166,7 @@ const verifyDynamicCode = async () => {
 	}
 };
 
-// handleLoginSuccess 处理登录成功的函数
+// 处理登录成功的函数
 const handleLoginSuccess = (data: {}) => {
 	const { accessToken, refreshToken, userID } = data || {};
 	localStorage.setItem("accessToken", accessToken);
@@ -166,6 +177,7 @@ const handleLoginSuccess = (data: {}) => {
 	router.push("/home/manage-article");
 };
 
+// 短信登录
 const smsLogin = async () => {
 	if (!phone.value || !smsCode.value) {
 		ElNotification({
@@ -209,7 +221,6 @@ const smsLogin = async () => {
 const sendCode = async () => {
 	if (isPhoneValid(phone.value)) {
 		const data = { phone: phone.value };
-
 		try {
 			const response = await window.$axios.post("/admin/sms-code", data);
 			const { code, message } = response.data;
@@ -280,6 +291,9 @@ watch(activeTab, () => {
 	phone.value = "";
 	smsCode.value = "";
 	dynamicCode.value = "";
+	show2FA.value = false;
+	qrCodeURL.value = '';
+	loginButtonText.value = activeTab.value === 'password-login' ? "继续" : "登录";
 
 	if (intervalId) {
 		clearInterval(intervalId);
@@ -295,8 +309,8 @@ watch(activeTab, () => {
 }
 
 .content {
-	width: 700px;
-	height: 460px;
+	width: 530px;
+	height: 400px;
 	border-radius: 5px;
 	box-shadow: 0px 2px 12px 0px rgba(105, 105, 105, 0.07);
 	background: rgba(255, 255, 255, 0.5);
@@ -313,7 +327,6 @@ watch(activeTab, () => {
 	max-height: 100%;
 	overflow-y: auto;
 	margin-bottom: 20px;
-	margin-top: -10px;
 }
 
 @keyframes mymove {
@@ -409,7 +422,7 @@ watch(activeTab, () => {
 }
 
 .content_input {
-	width: 380px;
+	width: 420px;
 	position: absolute;
 	top: 50%;
 	left: 50%;
@@ -432,7 +445,7 @@ watch(activeTab, () => {
 }
 
 .el-input {
-	margin: 14px 0px;
+	margin: 16px 0px;
 }
 
 .title {
@@ -452,5 +465,22 @@ watch(activeTab, () => {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
+}
+
+.twoFA {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	text-align: center;
+}
+
+.qr-code {
+	max-width: 122px;
+	max-height: 122px;
+}
+
+.button {
+	margin-top: 35px;
 }
 </style>
