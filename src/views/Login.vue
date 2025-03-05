@@ -23,9 +23,13 @@
 									<el-image :src="qrCodeURL" class="qr-code" />
 								</div>
 
-								<div v-if="show2FA && !qrCodeURL">
-									<el-input v-model="dynamicCode" clearable type="text" size="large"
-										placeholder="请输入6位动态验证码"></el-input>
+								<div v-if="show2FA && !qrCodeURL" class="dynamic-code-input">
+									<p>请输入6位动态验证码</p>
+									<div class="code-boxes">
+										<input v-for="(digit, index) in 6" :key="index" v-model="dynamicCode[index]"
+											@input="onInput(index, $event)" @keydown="onKeyDown(index, $event)"
+											maxlength="1" type="text" :ref="el => { if (el) codeInputs[index] = el }">
+									</div>
 								</div>
 							</el-tab-pane>
 
@@ -56,7 +60,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, computed, onMounted, onUnmounted } from "vue";
+import { ref, reactive, watch, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElNotification } from "element-plus";
 import Ribbons from "../utils/ribbon.js";
@@ -69,13 +73,37 @@ const phone = ref("");
 const smsCode = ref("");
 const countDown = ref(0);
 const show2FA = ref(false);
-const dynamicCode = ref("");
+const dynamicCode = ref(['', '', '', '', '', '']);
+const codeInputs = reactive([]);
 const qrCodeURL = ref('');
+const isBinding2FA = ref(false);
 const activeTab = ref("password-login");
 const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
-const loginButtonText = ref("继续");
+const loginButtonText = ref("Continue");
 
 let intervalId: NodeJS.Timeout | null = null;
+
+const onInput = (index: number, event: Event) => {
+	const input = event.target as HTMLInputElement;
+	const value = input.value;
+
+	// 确保输入的是单个数字
+	if (!/^\d*$/.test(value)) {
+		dynamicCode.value[index] = '';
+		return;
+	}
+
+	// 自动跳到下一个输入框
+	if (value && index < 5) {
+		codeInputs[index + 1].focus();
+	}
+};
+
+const onKeyDown = (index: number, event: KeyboardEvent) => {
+	if (event.key === 'Backspace' && !dynamicCode.value[index] && index > 0) {
+		codeInputs[index - 1].focus();
+	}
+};
 
 // 返回登录方式函数
 const handleButtonClick = () => {
@@ -85,7 +113,7 @@ const handleButtonClick = () => {
 		} else if (qrCodeURL.value) {
 			show2FA.value = true;
 			qrCodeURL.value = '';
-			loginButtonText.value = "登录";
+			loginButtonText.value = "Login";
 		} else {
 			verifyDynamicCode();
 		}
@@ -116,13 +144,16 @@ const passwordLogin = async () => {
 			});
 		} else {
 			if (data && data.qrCodeURL && data.userID) {
-				localStorage.setItem("userID", userID);
+				localStorage.setItem("userID", data.userID);
 				qrCodeURL.value = data.qrCodeURL;
 				show2FA.value = true;
-				loginButtonText.value = "已绑定完成";
+				loginButtonText.value = "Binding completed";
+				isBinding2FA.value = true;
 			} else {
+				localStorage.setItem("userID", data.userID);
 				show2FA.value = true;
-				loginButtonText.value = "登录";
+				loginButtonText.value = "Login";
+				isBinding2FA.value = false;
 			}
 		}
 	} catch (error) {
@@ -136,17 +167,20 @@ const passwordLogin = async () => {
 
 // 验证动态验证码
 const verifyDynamicCode = async () => {
-	if (!dynamicCode.value) {
+	const code = dynamicCode.value.join('');
+	if (code.length !== 6) {
 		ElNotification({
 			title: "Warning",
-			message: "请输入动态验证码",
+			message: "请输入完整的6位动态验证码",
 			type: "warning",
 		});
 		return;
 	}
-	const reqData = { dynamicCode: dynamicCode.value };
+	const userID = localStorage.getItem("userID");
+	const reqData = { code: code, userID: userID };
 	try {
-		const response = await window.$axios.post("/admin/verify-dynamic-code", reqData);
+		const apiPath = isBinding2FA.value ? "/admin/bind-dynamic-code" : "/admin/verify-dynamic-code";
+		const response = await window.$axios.post(apiPath, reqData);
 		const { code, message, data } = response.data;
 		if (code === 2000 && message === "") {
 			handleLoginSuccess(data);
@@ -192,15 +226,8 @@ const smsLogin = async () => {
 	try {
 		const response = await window.$axios.post("/admin/sms-login", reqData);
 		const { code, message, data } = response.data;
-		const { accessToken, refreshToken, userID } = data || {};
-
 		if (code === 2000 && message === "") {
-			localStorage.setItem("accessToken", accessToken);
-			localStorage.setItem("refreshToken", refreshToken);
-			localStorage.setItem("userID", userID);
-
-			Ribbons.stop();
-			router.push("/home/manage-article");
+			handleLoginSuccess(data);
 		} else {
 			ElNotification({
 				title: "Failed",
@@ -293,7 +320,7 @@ watch(activeTab, () => {
 	dynamicCode.value = "";
 	show2FA.value = false;
 	qrCodeURL.value = '';
-	loginButtonText.value = activeTab.value === 'password-login' ? "继续" : "登录";
+	loginButtonText.value = activeTab.value === 'password-login' ? "Continue" : "Login";
 
 	if (intervalId) {
 		clearInterval(intervalId);
@@ -483,4 +510,31 @@ watch(activeTab, () => {
 .button {
 	margin-top: 35px;
 }
+
+.dynamic-code-input {
+  text-align: center;
+}
+
+.code-boxes {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 32px;
+  margin-bottom: 32px;
+}
+
+.code-boxes input {
+  width: 50px;
+  height: 50px;
+  font-size: 24px;
+  text-align: center;
+  border: 2px solid #dcdfe6;
+  border-radius: 4px;
+  outline: none;
+}
+
+.code-boxes input:focus {
+  border-color: #409eff;
+}
+
 </style>
