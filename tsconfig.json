@@ -6,7 +6,7 @@
         ],
         "allowJs": true,
         "checkJs": false,
-        "outDir": "./dist",
+        "outDir": "admin-ui",
         "rootDir": "./src"
     },
     "include": [

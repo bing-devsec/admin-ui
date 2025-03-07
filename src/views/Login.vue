@@ -79,7 +79,7 @@ const qrCodeURL = ref('');
 const isBinding2FA = ref(false);
 const activeTab = ref("password-login");
 const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
-const loginButtonText = ref("Continue");
+const loginButtonText = ref("继续");
 
 let intervalId: NodeJS.Timeout | null = null;
 
@@ -113,7 +113,7 @@ const handleButtonClick = () => {
 		} else if (qrCodeURL.value) {
 			show2FA.value = true;
 			qrCodeURL.value = '';
-			loginButtonText.value = "Login";
+			loginButtonText.value = "登录";
 		} else {
 			verifyDynamicCode();
 		}
@@ -147,12 +147,12 @@ const passwordLogin = async () => {
 				localStorage.setItem("userID", data.userID);
 				qrCodeURL.value = data.qrCodeURL;
 				show2FA.value = true;
-				loginButtonText.value = "Binding completed";
+				loginButtonText.value = "已完成绑定";
 				isBinding2FA.value = true;
 			} else {
 				localStorage.setItem("userID", data.userID);
 				show2FA.value = true;
-				loginButtonText.value = "Login";
+				loginButtonText.value = "登录";
 				isBinding2FA.value = false;
 			}
 		}
@@ -320,7 +320,7 @@ watch(activeTab, () => {
 	dynamicCode.value = "";
 	show2FA.value = false;
 	qrCodeURL.value = '';
-	loginButtonText.value = activeTab.value === 'password-login' ? "Continue" : "Login";
+	loginButtonText.value = activeTab.value === 'password-login' ? "继续" : "登录";
 
 	if (intervalId) {
 		clearInterval(intervalId);
