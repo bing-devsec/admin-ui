@@ -40,7 +40,7 @@ async function refreshAccessToken() {
 
             const { code, message, data } = response.data;
             const { accessToken, refreshToken: newRefreshToken, userID } = data || {};
-            if (code === 2000) {
+            if (code === 2000 && message === '') {
                 localStorage.setItem('accessToken', accessToken);
                 localStorage.setItem('refreshToken', newRefreshToken);
                 localStorage.setItem('userID', userID);
@@ -70,11 +70,11 @@ _axios.interceptors.response.use(
                     return response;
 
                 case 4010:
-                    router.push('/login');
+                    router.push('/').catch(() => {});
                     return Promise.reject(new Error('Unauthorized'));
 
                 case 4011:
-                    router.push('/login');
+                    router.push('/').catch(() => {});
                     return Promise.reject(new Error('Forbidden'));
 
                 case 4012:
@@ -82,7 +82,7 @@ _axios.interceptors.response.use(
                     if (refreshSuccess) {
                         return _axios(config);
                     } else {
-                        router.push('/login');
+                        router.push('/').catch(() => {});
                         return Promise.reject(new Error('Refresh token failed'));
                     }
 

@@ -52,7 +52,7 @@ function onSubmit() {
     };
 
     const accessToken = localStorage.getItem("accessToken");
-    if (!accessToken) { router.push("/login"); return; }
+    if (!accessToken) { router.push('/').catch(() => {}); return; }
 
     if (data.id === "") {
         _axios
@@ -65,7 +65,7 @@ function onSubmit() {
                         message: "添加文章成功",
                         type: "success",
                     });
-                    router.push('/home/manage-article');
+                    router.push('/home/manage-article').catch(() => {});
                 } else {
                     ElNotification({
                         title: "Failed",
@@ -92,7 +92,7 @@ function onSubmit() {
                         message: "修改文章成功",
                         type: "success",
                     });
-                    router.push('/home/manage-article');
+                    router.push('/home/manage-article').catch(() => {});
                 } else {
                     ElNotification({
                         title: "Failed",

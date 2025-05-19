@@ -1,13 +1,13 @@
 <script lang="ts" setup>
 import { RouterView } from "vue-router";
-import manue from "./manue.vue";
+import appMenu from "./app-menu.vue";
 </script>
 
 <template>
 	<div class="common-layout">
 		<el-container class="inner-container">
 			<el-aside>
-				<manue></manue>
+				<appMenu></appMenu>
 			</el-aside>
 			<el-main>
 				<RouterView></RouterView>

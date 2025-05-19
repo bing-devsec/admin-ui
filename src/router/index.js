@@ -1,61 +1,45 @@
 import { createRouter, createWebHistory } from 'vue-router';
 
-import fingerPrint from '@/views/finger-print.vue';
-
-import login from '@/views/login.vue';
-import home from '@/components/home.vue';
-
-import writeArticle from '@/views/write-article.vue';
-import manageArticle from '@/views/manage-article.vue';
-import manageTag from '@/views/manage-tag.vue';
-import manageLink from '@/views/manage-link.vue';
-import aboutMe from '@/views/about-me.vue';
-import signOut from '@/views/sign-out.vue';
-
 const routes = [
     {
         path: '/home',
-        component: home,
+        component: () => import('@/components/home.vue'),
         children: [
             {
                 path: 'write-article',
-                component: writeArticle,
+                component: () => import('@/views/write-article.vue'),
                 meta: { requiresAuth: true },
             },
             {
                 path: 'manage-article',
-                component: manageArticle,
+                component: () => import('@/views/manage-article.vue'),
                 meta: { requiresAuth: true },
             },
             {
                 path: 'manage-tag',
-                component: manageTag,
+                component: () => import('@/views/manage-tag.vue'),
                 meta: { requiresAuth: true },
             },
             {
                 path: 'manager-link',
-                component: manageLink,
+                component: () => import('@/views/manage-link.vue'),
                 meta: { requiresAuth: true },
             },
             {
                 path: 'about-me',
-                component: aboutMe,
+                component: () => import('@/views/about-me.vue'),
                 meta: { requiresAuth: true },
             },
             {
                 path: 'sign-out',
-                component: signOut,
+                component: () => import('@/views/sign-out.vue'),
                 meta: { requiresAuth: true },
             }
         ],
     },
     {
-        path: '/login',
-        component: login,
-    },
-    {
         path: '/',
-        component: fingerPrint,
+        component: () => import('@/views/login.vue'),
     }
 ];
 
@@ -81,10 +65,10 @@ function refreshAccessToken() {
                 const { code, message, data } = response.data;
                 const { accessToken, refreshToken, userID } = data || {};
                 if (code === 4010 || code === 4011 || code===4012 || code===5000) {
-                    router.push("/login");
+                    router.push('/').catch(() => {});
                     return false;
                 }
-                if (code===2000){
+                if (code===2000&&message===''){
                     localStorage.setItem('accessToken', accessToken);
                     localStorage.setItem('refreshToken', refreshToken);
                     localStorage.setItem('userID', userID);

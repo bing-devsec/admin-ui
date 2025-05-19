@@ -11,7 +11,7 @@ const logout = () => {
 	localStorage.removeItem("refreshToken");
 	localStorage.removeItem("userID");
 	window.$axios.defaults.headers.common["Authorization"] = "";
-	router.push("/login");
+	router.push('/').catch(() => {});
 };
 logout();
 </script>

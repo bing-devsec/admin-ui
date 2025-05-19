@@ -208,7 +208,7 @@ const handleLoginSuccess = (data: {}) => {
 	localStorage.setItem("userID", userID);
 
 	Ribbons.stop();
-	router.push("/home/manage-article");
+	router.push("/home/manage-article").catch(() => {});
 };
 
 // 短信登录

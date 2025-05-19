@@ -1,5 +1,5 @@
 <template>
-    <MdEditor v-model="displayContent" class="writeArticle" :codeFoldable="codeFoldable"
+    <MdEditor v-model="displayContent" class="writeArticle" :codeFoldable="true"
         :autoFoldThreshold="autoFoldThreshold" :tabWidth="tabWidth" :autoDetectCode="autoDetectCode"
         :formatCopiedText="formatCopiedText" @onSave="saveArticle">
     </MdEditor>
@@ -17,7 +17,6 @@ import SubmitArticle from '../components/submit-article.vue';
 import emitter from '../utils/event-bus.js'
 import 'md-editor-v3/lib/style.css';
 
-const codeFoldable = ref(true);
 const autoFoldThreshold = ref(20);
 const autoDetectCode = ref(true);
 const tabWidth = ref(4);
