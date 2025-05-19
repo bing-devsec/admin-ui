@@ -1,11 +1,11 @@
 import axios from 'axios';
 import router from '@/router';
 
-const config =  {
-    // baseURL: 'http://127.0.0.1:8080',
-    baseURL: '/api',
-    headers:{
-        'Content-Type':'application/json;charset=utf-8',
+const config = {
+    baseURL: 'http://127.0.0.1:8080',
+    // baseURL: '/api',
+    headers: {
+        'Content-Type': 'application/json;charset=utf-8',
     },
     withCredentials: false,
 }
@@ -59,7 +59,7 @@ async function refreshAccessToken() {
 
 // 响应拦截器
 _axios.interceptors.response.use(
-    async (response) => {
+    async(response) => {
         const { status, data, config } = response;
         const statusCode = Number(status);
 
@@ -96,7 +96,7 @@ _axios.interceptors.response.use(
             return Promise.reject(new Error('Network error'));
         }
     },
-    async (error) => {
+    async(error) => {
         return Promise.reject(error);
     }
 );

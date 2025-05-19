@@ -317,7 +317,7 @@ watch(activeTab, () => {
 	password.value = "";
 	phone.value = "";
 	smsCode.value = "";
-	dynamicCode.value = "";
+	dynamicCode.value = ['', '', '', '', '', ''];
 	show2FA.value = false;
 	qrCodeURL.value = '';
 	loginButtonText.value = activeTab.value === 'password-login' ? "继续" : "登录";
@@ -512,29 +512,28 @@ watch(activeTab, () => {
 }
 
 .dynamic-code-input {
-  text-align: center;
+	text-align: center;
 }
 
 .code-boxes {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 32px;
-  margin-bottom: 32px;
+	display: flex;
+	justify-content: center;
+	gap: 10px;
+	margin-top: 32px;
+	margin-bottom: 32px;
 }
 
 .code-boxes input {
-  width: 50px;
-  height: 50px;
-  font-size: 24px;
-  text-align: center;
-  border: 2px solid #dcdfe6;
-  border-radius: 4px;
-  outline: none;
+	width: 50px;
+	height: 50px;
+	font-size: 24px;
+	text-align: center;
+	border: 2px solid #dcdfe6;
+	border-radius: 4px;
+	outline: none;
 }
 
 .code-boxes input:focus {
-  border-color: #409eff;
+	border-color: #409eff;
 }
-
 </style>
