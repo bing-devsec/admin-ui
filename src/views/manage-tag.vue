@@ -53,10 +53,10 @@ onMounted(async () => {
 
 const fetchTagList = async (currentActiveTag: string = '') => {
     try {
-        const response = await _axios.get('/admin/tag/list');
+        const response = await _axios.get('/admin/auth/tag/list');
         const { code, message, data } = response.data;
         if (code === 2000 && message === "") {
-            tags.value = data;
+            tags.value = (data?.rows ?? []).map((row: { name: string; articleNum: number }) => row.name);
             if (tags.value.length > 0) {
                 if (currentActiveTag && tags.value.includes(currentActiveTag)) {
                     activeTag.value = currentActiveTag;
@@ -84,7 +84,7 @@ const fetchTagList = async (currentActiveTag: string = '') => {
 const fetchArticleList = async () => {
     if (!activeTag.value) return;
     try {
-        const response = await _axios.get('/admin/tag/article-list', {
+        const response = await _axios.get('/admin/auth/tag/article-list', {
             params: {
                 tagName: activeTag.value,
                 page: currentPage.value,

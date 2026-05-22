@@ -79,7 +79,7 @@ const tag = ref("");
 // 封装获取博客详情的函数
 async function fetchArticleDetails(id: string) {
     try {
-        const response = await _axios.get(`/admin/article/detail`, {
+        const response = await _axios.get(`/admin/auth/article/detail`, {
             params: { id: id },
         });
 
@@ -161,7 +161,7 @@ const open = (index: number, row: Article) => {
 
 async function handleDelete(index: number, row: Article) {
     try {
-        const response = await _axios.delete(`/admin/article/delete`, {
+        const response = await _axios.delete(`/admin/auth/article/delete`, {
             params: { id: row.id },
         });
         const { code, message } = response.data;

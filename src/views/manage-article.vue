@@ -50,7 +50,7 @@ let activeTab = ref('按发布时间');
 // 请求数据的通用函数
 const fetchData = async (order: string) => {
 	try {
-		const response = await _axios.get('/admin/article/list', {
+		const response = await _axios.get('/admin/auth/article/list', {
 			params: { order, page: currentPage.value, pageSize: pageSize },
 		});
 

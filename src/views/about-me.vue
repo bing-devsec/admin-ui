@@ -194,7 +194,7 @@ async function onSubmit() {
     }
 
     try {
-        const response = await _axios.put('/admin/about-me', {
+        const response = await _axios.put('/admin/auth/about-me', {
             id: aboutMe.id,
             ...aboutMeInfo,
             ...websiteInfo,

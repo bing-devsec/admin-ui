@@ -51,7 +51,7 @@ async function submitForm() {
     };
 
     try {
-        const response = await _axios.put('/admin/tag/update', data);
+        const response = await _axios.put('/admin/auth/tag/update', data);
         const { code, message } = response.data;
 
         if (code === 2000 && message === "") {
