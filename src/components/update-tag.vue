@@ -25,15 +25,15 @@ import { ref, watch } from 'vue';
 import { ElNotification } from 'element-plus';
 import _axios from '../utils/axios';
 
-const newTag = ref('');
-const formLabelWidth = '80px';
-const dialogVisible = ref(props.visible);
-const emit = defineEmits(['update:visible', 'update:refresh']);
 const props = defineProps<{
     visible: boolean;
     selectedID: string[];
     currentTag: string;
 }>();
+const emit = defineEmits(['update:visible', 'update:refresh']);
+const newTag = ref('');
+const formLabelWidth = '80px';
+const dialogVisible = ref(props.visible);
 
 watch(() => props.visible, (newValue) => {
     dialogVisible.value = newValue;
