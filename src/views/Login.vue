@@ -63,7 +63,7 @@
 import { ref, reactive, watch, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElNotification } from "element-plus";
-import Ribbons from "../utils/ribbon.js";
+import Ribbons from "../utils/ribbon";
 
 // 定义响应式数据
 const router = useRouter();
@@ -79,9 +79,9 @@ const qrCodeURL = ref('');
 const isBinding2FA = ref(false);
 const activeTab = ref("password-login");
 const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
-const loginButtonText = ref("继续");
+const loginButtonText = ref("登录");
 
-let intervalId: NodeJS.Timeout | null = null;
+let intervalId: ReturnType<typeof setInterval> | null = null;
 
 const onInput = (index: number, event: Event) => {
 	const input = event.target as HTMLInputElement;
@@ -157,9 +157,10 @@ const passwordLogin = async () => {
 			}
 		}
 	} catch (error) {
+		console.error("account-login error:", error);
 		ElNotification({
 			title: "Error",
-			message: error,
+			message: "登录失败，请稍后重试",
 			type: "error",
 		});
 	}
@@ -192,19 +193,19 @@ const verifyDynamicCode = async () => {
 			});
 		}
 	} catch (error) {
+		console.error("verify-dynamic-code error:", error);
 		ElNotification({
 			title: "Error",
-			message: error,
+			message: "验证失败，请稍后重试",
 			type: "error",
 		});
 	}
 };
 
 // 处理登录成功的函数
-const handleLoginSuccess = (data: {}) => {
-	const { accessToken, refreshToken, userID } = data || {};
-	localStorage.setItem("accessToken", accessToken);
-	localStorage.setItem("refreshToken", refreshToken);
+const handleLoginSuccess = (data: { userID: string }) => {
+	const { userID } = data || {};
+	// access_token / refresh_token 由后端以 HttpOnly Cookie 下发，前端不再持有
 	localStorage.setItem("userID", userID);
 
 	Ribbons.stop();
@@ -236,9 +237,10 @@ const smsLogin = async () => {
 			});
 		}
 	} catch (error) {
+		console.error("sms-login error:", error);
 		ElNotification({
 			title: "Error",
-			message: error,
+			message: "登录失败，请稍后重试",
 			type: "error",
 		});
 	}
@@ -280,9 +282,10 @@ const sendCode = async () => {
 				});
 			}
 		} catch (error) {
+			console.error("sms-code error:", error);
 			ElNotification({
 				title: "Error",
-				message: error,
+				message: "验证码发送失败，请稍后重试",
 				type: "error",
 			});
 		}
@@ -320,7 +323,7 @@ watch(activeTab, () => {
 	dynamicCode.value = ['', '', '', '', '', ''];
 	show2FA.value = false;
 	qrCodeURL.value = '';
-	loginButtonText.value = activeTab.value === 'password-login' ? "继续" : "登录";
+	loginButtonText.value = "登录";
 
 	if (intervalId) {
 		clearInterval(intervalId);

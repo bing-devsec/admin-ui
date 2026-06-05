@@ -27,7 +27,7 @@ import { ref, onMounted, nextTick } from 'vue'
 import { ElNotification } from "element-plus";
 import updateTag from '../components/update-tag.vue';
 import tagArticleList from '../components/tag-article-list.vue'
-import pagination from '../components/pagination.vue'
+import pagination from '../components/Pagination.vue'
 import _axios from '../utils/axios'
 
 const isReady = ref(false);
@@ -35,7 +35,7 @@ const activeTag = ref('');
 const tags = ref<string[]>([]);
 const articleList = ref<any[]>([]);
 const currentPage = ref(1);
-const pageSize = 9;
+const pageSize = 10;
 const total = ref(0);
 const dialogVisible = ref(false)
 

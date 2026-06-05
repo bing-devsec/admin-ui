@@ -35,7 +35,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from 'vue';
 import articleManageTab from '../components/article-manage-tab.vue';
-import pagination from '../components/pagination.vue';
+import pagination from '../components/Pagination.vue';
 import { Calendar, View } from "@element-plus/icons-vue";
 import { ElNotification } from "element-plus";
 import _axios from '../utils/axios';
@@ -43,7 +43,7 @@ import _axios from '../utils/axios';
 // 数据和分页信息
 let tabData = ref([]);
 let currentPage = ref(1);
-let pageSize = 9;
+let pageSize = 10;
 let total = ref(0);
 let activeTab = ref('按发布时间');
 

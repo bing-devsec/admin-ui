@@ -11,7 +11,7 @@ let { total } = toRefs(props)
 const emit = defineEmits(['handleCurrentChange'])
 
 let currentPage = ref(1);
-let pageSize = ref(9);
+let pageSize = ref(10);
 let pagerCount = 9;
 
 const handlePageChange = (newPage: number) => {

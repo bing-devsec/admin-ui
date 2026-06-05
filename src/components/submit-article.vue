@@ -248,8 +248,8 @@ async function onSubmit() {
         describe: article.describe,
     };
 
-    const accessToken = localStorage.getItem("accessToken");
-    if (!accessToken) { router.push('/').catch(() => {}); return; }
+    const userID = localStorage.getItem("userID");
+    if (!userID) { router.push('/').catch(() => {}); return; }
 
     const notifyNewTag = () => {
         if (isNewTag) {

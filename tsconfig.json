@@ -1,18 +1,32 @@
 {
     "compilerOptions": {
-        "lib": [
-            "ES2015",
-            "DOM"
-        ],
+        "target": "ES2020",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "strict": false,
+        "noImplicitAny": false,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "skipLibCheck": true,
+        "useDefineForClassFields": true,
+        "jsx": "preserve",
         "allowJs": true,
         "checkJs": false,
-        "outDir": "admin-ui",
-        "rootDir": "./src"
+        "noEmit": true,
+        "types": ["vite/client"],
+        "paths": {
+            "@/*": ["./src/*"]
+        }
     },
     "include": [
         "src/**/*.ts",
-        "src/**/*.d.ts",
         "src/**/*.tsx",
-        "src/global.d.ts"
+        "src/**/*.d.ts",
+        "src/**/*.vue",
+        "src/**/*.js",
+        "vite.config.ts"
     ]
 }
