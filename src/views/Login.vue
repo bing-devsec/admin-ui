@@ -60,7 +60,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, watch, computed, onMounted } from "vue";
+import { ref, reactive, watch, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElNotification } from "element-plus";
 import Ribbons from "../utils/ribbon";
@@ -80,6 +80,13 @@ const isBinding2FA = ref(false);
 const activeTab = ref("password-login");
 const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
 const loginButtonText = ref("登录");
+
+watch(show2FA, async (val) => {
+	if (val && !qrCodeURL.value) {
+		await nextTick();
+		codeInputs[0]?.focus?.();
+	}
+});
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -312,6 +319,11 @@ const isButtonDisabled = computed(() => {
 // 开始动画
 onMounted(() => {
 	Ribbons.start();
+});
+
+// 组件卸载时停止动画，避免 RAF 循环 / 事件监听 / canvas 残留
+onUnmounted(() => {
+	Ribbons.stop();
 });
 
 // 监听 activeTab 的变化

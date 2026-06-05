@@ -345,6 +345,5 @@ export default {
 	start(options?: Partial<RibbonOptions>): void {
 		if (instance) instance.destroy();
 		instance = new Ribbons(options);
-		window.Ribbons = instance;
 	},
 };
