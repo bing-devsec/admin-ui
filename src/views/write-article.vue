@@ -13,45 +13,15 @@
                         <el-icon><Monitor /></el-icon>
                         <span class="device-label">PC</span>
                     </el-radio-button>
-                    <el-radio-button value="mobile">
+                    <el-radio-button value="tablet">
+                        <el-icon><Cellphone /></el-icon>
+                        <span class="device-label">平板</span>
+                    </el-radio-button>
+                    <el-radio-button value="phone">
                         <el-icon><Iphone /></el-icon>
-                        <span class="device-label">移动</span>
+                        <span class="device-label">手机</span>
                     </el-radio-button>
                 </el-radio-group>
-                <el-select
-                    v-show="mode !== 'edit' && device === 'mobile'"
-                    v-model="deviceId"
-                    size="default"
-                    class="device-select"
-                    placeholder="选择机型"
-                >
-                    <el-option-group
-                        v-for="group in deviceGroups"
-                        :key="group.brand"
-                        :label="group.brand === 'Apple' ? 'Apple' : group.brand === 'Xiaomi' ? '小米' : '通用'"
-                    >
-                        <el-option
-                            v-for="d in group.list"
-                            :key="d.id"
-                            :label="d.label"
-                            :value="d.id"
-                        >
-                            <div class="device-option">
-                                <span class="device-option-name">{{ d.label }}</span>
-                                <span class="device-option-size">{{ d.width }} × {{ d.height }}</span>
-                            </div>
-                        </el-option>
-                    </el-option-group>
-                </el-select>
-                <el-button
-                    v-show="mode !== 'edit' && device === 'mobile'"
-                    link
-                    @click="orientation = orientation === 'portrait' ? 'landscape' : 'portrait'"
-                    :title="orientation === 'portrait' ? '切到横屏' : '切到竖屏'"
-                >
-                    <el-icon><Refresh /></el-icon>
-                    {{ orientation === 'portrait' ? '横屏' : '竖屏' }}
-                </el-button>
                 <span class="toolbar-stat">{{ charCount }} 字 · {{ lineCount }} 行</span>
             </div>
             <div class="toolbar-right">
@@ -94,10 +64,8 @@
                 <ArticlePreview
                     :markdown="displayContent"
                     :device="device"
-                    :orientation="orientation"
                     :device-width="currentDevice.width"
                     :device-height="currentDevice.height"
-                    :device-label="currentDevice.label"
                 />
             </div>
         </div>
@@ -120,21 +88,25 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { ElNotification } from 'element-plus';
-import { Promotion, MagicStick, Monitor, Iphone, Refresh } from '@element-plus/icons-vue';
+import { Promotion, MagicStick, Monitor, Iphone, Cellphone } from '@element-plus/icons-vue';
 import SubmitArticle from '../components/submit-article.vue';
 import ArticlePreview from '../components/article-preview.vue';
 import emitter from '../utils/event-bus.js';
 import { beautifyMarkdown } from '../utils/format-text';
-import { DEVICE_PRESETS, DEFAULT_DEVICE_ID, findDevice, type DevicePreset } from '../utils/device-presets';
+import {
+    DEFAULT_DEVICE_ID,
+    DEFAULT_DEVICE_BY_CATEGORY,
+    findDevice,
+    type DevicePreset,
+} from '../utils/device-presets';
 
 // ============================================================
 // 状态
 // ============================================================
 const mode = ref<'edit' | 'split' | 'preview'>('split');
-const device = ref<'pc' | 'mobile'>('pc');
-const orientation = ref<'portrait' | 'landscape'>('portrait');
+const device = ref<'pc' | 'phone' | 'tablet'>('pc');
 const deviceId = ref<string>(DEFAULT_DEVICE_ID);
 
 // 当前选中机型（找不到时回落到默认）
@@ -142,13 +114,13 @@ const currentDevice = computed<DevicePreset>(
     () => findDevice(deviceId.value) || findDevice(DEFAULT_DEVICE_ID)!
 );
 
-// 按品牌分组，供下拉显示
-const deviceGroups = computed(() => {
-    const order: DevicePreset['brand'][] = ['Apple', 'Xiaomi', 'Generic'];
-    return order.map((brand) => ({
-        brand,
-        list: DEVICE_PRESETS.filter((d) => d.brand === brand),
-    }));
+// 切换设备品类时，把 deviceId 自动回填为该品类的默认机型，避免显示别的品类的型号
+watch(device, (next) => {
+    if (next === 'pc') return;
+    const expected: 'phone' | 'tablet' = next;
+    if (currentDevice.value.category !== expected) {
+        deviceId.value = DEFAULT_DEVICE_BY_CATEGORY[expected];
+    }
 });
 
 const id = ref('');
@@ -259,17 +231,40 @@ function insertSnippet(key: string) {
     }
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-    const value = ta.value;
     // 确保前面有空行（除非已经在行首）
-    const before = value.slice(0, start);
+    const before = ta.value.slice(0, start);
     const needsLeadingNewline = before.length > 0 && !before.endsWith('\n\n');
     const prefix = needsLeadingNewline ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
     const insert = prefix + snippet;
-    displayContent.value = before + insert + value.slice(end);
-    requestAnimationFrame(() => {
-        ta.focus();
-        ta.selectionStart = ta.selectionEnd = start + insert.length;
-    });
+
+    // 优先用 execCommand('insertText')：唯一能既保留 scrollTop、又写入浏览器原生
+    // undo 栈的 API（setRangeText 不会进入 undo 栈，导致 Ctrl+Z 失效）。
+    ta.focus();
+    ta.setSelectionRange(start, end);
+    let inserted = false;
+    try {
+        // execCommand 已被标记为 deprecated，但目前仍是 textarea 中
+        // 唯一能保留浏览器原生 undo 历史的 API，所有主流浏览器仍支持。
+        inserted = document.execCommand('insertText', false, insert);
+    } catch {
+        inserted = false;
+    }
+    if (!inserted) {
+        // 兜底：execCommand 不可用时退回 setRangeText（此时无 undo，但功能可用）
+        ta.setRangeText(insert, start, end, 'end');
+        displayContent.value = ta.value;
+    }
+
+    // 把光标所在行滚动到可视区（仅当当前 scrollTop 没覆盖光标行时调整）
+    const caret = start + insert.length;
+    const linesBefore = ta.value.slice(0, caret).split('\n').length;
+    const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 22;
+    const caretTop = (linesBefore - 1) * lineHeight;
+    const viewTop = ta.scrollTop;
+    const viewBottom = viewTop + ta.clientHeight;
+    if (caretTop < viewTop || caretTop + lineHeight > viewBottom) {
+        ta.scrollTop = Math.max(0, caretTop - ta.clientHeight / 2);
+    }
 }
 
 // ============================================================
@@ -392,10 +387,6 @@ onBeforeUnmount(() => {
     font-size: 12px;
 }
 
-.device-select {
-    width: 220px;
-}
-
 .toolbar-right {
     display: flex;
     align-items: center;
@@ -413,6 +404,47 @@ onBeforeUnmount(() => {
     flex: 1;
     overflow: auto;
     min-width: 0;
+}
+
+/* ============================================================ */
+/* 编辑区 / 预览区滚动条样式：细滚动条，hover 不放大 */
+/* ============================================================ */
+.write-pane,
+.md-textarea {
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: #c0c4cc transparent;
+}
+
+.write-pane::-webkit-scrollbar,
+.md-textarea::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.write-pane::-webkit-scrollbar-track,
+.md-textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.write-pane::-webkit-scrollbar-thumb,
+.md-textarea::-webkit-scrollbar-thumb {
+    background: #c0c4cc;
+    border-radius: 3px;
+    /* hover 不变粗、不变色，保持一致 */
+    border: none;
+}
+
+.write-pane::-webkit-scrollbar-thumb:hover,
+.md-textarea::-webkit-scrollbar-thumb:hover,
+.write-pane::-webkit-scrollbar-thumb:active,
+.md-textarea::-webkit-scrollbar-thumb:active {
+    background: #c0c4cc;
+}
+
+.write-pane::-webkit-scrollbar-corner,
+.md-textarea::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 .write-body[data-mode='edit'] .write-edit {
@@ -476,55 +508,5 @@ onBeforeUnmount(() => {
 
 .publish-drawer :deep(.el-drawer__body) {
     overflow: hidden;
-}
-</style>
-
-<!-- 下拉弹层会被 teleport 到 body，必须用非 scoped 样式 -->
-<style>
-/* 缩小选项左右默认 padding，让名称与尺寸更贴近边缘 */
-.el-select-dropdown .el-select-dropdown__item {
-    padding-left: 12px;
-    padding-right: 12px;
-}
-
-/* 分组标题（Apple / 小米 / 通用）居中显示 */
-.el-select-dropdown .el-select-group__title {
-    text-align: center;
-    padding: 0 12px;
-    font-weight: 600;
-    color: #606266;
-    letter-spacing: 1px;
-}
-
-.el-select-dropdown .device-option {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    width: 100%;
-    line-height: 1.4;
-}
-
-.el-select-dropdown .device-option-name {
-    color: inherit;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.el-select-dropdown .device-option-size {
-    color: #909399;
-    font-size: 12px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    flex-shrink: 0;
-    letter-spacing: 0.3px;
-}
-
-/* 选中态下尺寸文本颜色稍变浅以协调高亮背景 */
-.el-select-dropdown__item.is-selected .device-option-size,
-.el-select-dropdown__item.hover .device-option-size {
-    color: var(--el-color-primary);
-    opacity: 0.85;
 }
 </style>

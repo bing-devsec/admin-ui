@@ -27,7 +27,7 @@ import { ref, onMounted, nextTick } from 'vue'
 import { ElNotification } from "element-plus";
 import updateTag from '../components/update-tag.vue';
 import tagArticleList from '../components/tag-article-list.vue'
-import pagination from '../components/Pagination.vue'
+import pagination from '../components/pagination.vue'
 import _axios from '../utils/axios'
 
 const isReady = ref(false);

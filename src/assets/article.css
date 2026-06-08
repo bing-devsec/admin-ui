@@ -623,34 +623,42 @@
 }
 
 /* ============================================================
- * 全屏蒙层（移动端「伪横屏」查看代码）
+ * 全屏蒙层（在设备/预览容器内部局部覆盖）
  * ============================================================ */
 .ssr-code-fs-overlay {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: 9999;
+    z-index: 50;
     background-color: #1c1f24;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: stretch;
     overflow: hidden;
-    /* 防止 iOS Safari 出现地址栏弹回时的留白 */
-    height: 100dvh;
+    /* 启用容器查询，便于伪横屏 stage 用 100cqh/100cqw 撑满 */
+    container-type: size;
+    /* 阻止 wheel/touch 边界处冒泡，避免触控板左右滑触发浏览器前进/后退 */
+    overscroll-behavior: contain;
 }
 
-/* 旋转舞台：宽高互换实现"竖屏当横屏用" */
 .ssr-code-fs-stage {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    /* 用 dvh/dvw 而非 vh/vw，规避 iOS Safari 地址栏抖动 */
-    width: 100dvh;
-    height: 100dvw;
-    transform: translate(-50%, -50%) rotate(90deg);
-    transform-origin: center center;
+    position: relative;
+    width: 100%;
+    height: 100%;
     background-color: #24292e;
     display: flex;
     flex-direction: column;
+}
+
+/* 手机竖屏时给蒙层加 .fs-rotate90，做伪横屏：
+   stage 宽高互换 + rotate(90deg)，让代码用上手机的长边展示 */
+.ssr-code-fs-overlay.fs-rotate90 .ssr-code-fs-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100cqh;
+    height: 100cqw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
 }
 
 /* 全屏内顶部工具条：右侧 × 关闭，左侧语言/行数提示 */
@@ -863,39 +871,38 @@
 }
 
 /* ============================================================
- * 表格全屏（移动端伪横屏）
- * ------------------------------------------------------------
- * 与代码块全屏（.ssr-code-fs-*）共用伪横屏底层方案：
- * - 蒙层 position: fixed; inset: 0; 占满 viewport
- * - 内部 stage 用 transform: rotate(90deg) 旋转 90 度，宽高互换
- * - 使用 dvh/dvw 规避 iOS Safari 地址栏抖动
- * 差异：
- * - 内容区不是代码 <pre>，而是承载 <table> 的滚动容器，需要 overflow: auto
- * - 顶部 head 多一行"提示横屏"小条，让用户在横屏后视觉密度最大化
+ * 表格全屏（在设备/预览容器内部局部覆盖）
  * ============================================================ */
 .ssr-table-fs-overlay {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: 9999;
+    z-index: 50;
     background-color: #1c1f24;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: stretch;
     overflow: hidden;
-    height: 100dvh;
+    container-type: size;
+    overscroll-behavior: contain;
 }
 
 .ssr-table-fs-stage {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 100dvh;
-    height: 100dvw;
-    transform: translate(-50%, -50%) rotate(90deg);
-    transform-origin: center center;
+    position: relative;
+    width: 100%;
+    height: 100%;
     background-color: #f8f9fa;
     display: flex;
     flex-direction: column;
+}
+
+.ssr-table-fs-overlay.fs-rotate90 .ssr-table-fs-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100cqh;
+    height: 100cqw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
 }
 
 .ssr-table-fs-head {
@@ -1491,9 +1498,9 @@
    舞台 stage 撑满 viewport 减去顶部工具栏高度，canvas 用 transform 做缩放/平移。
    ============================================================ */
 .mermaid-fs-overlay {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: 9999;
+    z-index: 50;
     background-color: rgba(255, 255, 255, 0.98);
     display: flex;
     flex-direction: column;
@@ -1798,4 +1805,29 @@
     font-size: clamp(11px, 10px + 0.3vw, 12px);
     pointer-events: none;
     user-select: none;
+}
+
+/* ============================================================
+   portal-web 全屏功能样式（代码块 / 表格 / Mermaid）—— admin-ui PC 模式覆盖
+   ------------------------------------------------------------
+   - 上方继承自 portal-web 的样式中：
+       .article-body-ssr .ssr-code-fullscreen { display: none; }
+     仅在 @media(max-width:576px) 才切回 inline-flex；
+     在 admin-ui PC 模式下（root 直挂外层 document，宿主视口 > 576px），
+     需要强制显示代码块全屏按钮和 Mermaid 全屏按钮（编辑预览查看长代码 / 流程图也有用）。
+   - 表格全屏在 PC 模式下意义不大，强制隐藏。
+   ============================================================ */
+.article-preview .ssr-code-fullscreen {
+    display: inline-flex;
+}
+.article-preview .ssr-code-fullscreen > svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+.article-preview .mermaid-fullscreen-btn {
+    display: inline-flex;
+}
+.article-preview .ssr-table-fs-btn {
+    display: none;
 }

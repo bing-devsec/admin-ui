@@ -35,7 +35,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from 'vue';
 import articleManageTab from '../components/article-manage-tab.vue';
-import pagination from '../components/Pagination.vue';
+import pagination from '../components/pagination.vue';
 import { Calendar, View } from "@element-plus/icons-vue";
 import { ElNotification } from "element-plus";
 import _axios from '../utils/axios';

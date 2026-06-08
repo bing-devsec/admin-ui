@@ -8,8 +8,16 @@
     ></div>
 
     <!-- 移动模式：iframe 模拟设备视口，让 @media 真实生效 -->
-    <div v-else class="mobile-frame-wrap">
-        <div class="device-shell" :class="{ landscape: orientation === 'landscape' }">
+    <div
+        v-else
+        ref="wrapRef"
+        class="mobile-frame-wrap fit-portrait"
+    >
+        <div
+            class="device-shell"
+            :class="[`device-shell--${device}`]"
+            :style="shellStyle"
+        >
             <div class="device-notch"></div>
             <div class="device-screen" :style="screenStyle">
                 <iframe
@@ -20,13 +28,6 @@
                 ></iframe>
             </div>
             <div class="device-home"></div>
-        </div>
-        <div class="device-meta">
-            <span v-if="deviceLabel" class="device-meta-label">{{ deviceLabel }}</span>
-            <span class="device-meta-size">
-                {{ orientation === 'portrait' ? deviceWidth : deviceHeight }} ×
-                {{ orientation === 'portrait' ? deviceHeight : deviceWidth }} px
-            </span>
         </div>
     </div>
 </template>
@@ -39,34 +40,69 @@ const props = withDefaults(
     defineProps<{
         markdown: string;
         debounceMs?: number;
-        device?: 'pc' | 'mobile';
+        device?: 'pc' | 'phone' | 'tablet';
         deviceWidth?: number;
         deviceHeight?: number;
-        deviceLabel?: string;
-        orientation?: 'portrait' | 'landscape';
     }>(),
     {
         debounceMs: 200,
         device: 'pc',
         deviceWidth: 375,
         deviceHeight: 812,
-        deviceLabel: '',
-        orientation: 'portrait',
     }
 );
 
 const root = ref<HTMLElement | null>(null);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
+const wrapRef = ref<HTMLElement | null>(null);
 const html = ref('');
 
 // ============================================================
-// 移动端尺寸：根据竖横屏交换宽高
+// 移动端尺寸：直接用 props 配置的设备宽高（统一竖屏）
 // ============================================================
-const screenStyle = computed(() => {
-    const w = props.orientation === 'portrait' ? props.deviceWidth : props.deviceHeight;
-    const h = props.orientation === 'portrait' ? props.deviceHeight : props.deviceWidth;
-    return { width: `${w}px`, height: `${h}px` };
-});
+const screenStyle = computed(() => ({
+    width: `${props.deviceWidth}px`,
+    height: `${props.deviceHeight}px`,
+}));
+
+// ============================================================
+// 自适应缩放：按外层可用空间等比缩，<1 才缩，>=1 不放大
+// 保证不出现外层滚动条
+// ============================================================
+const shellScale = ref(1);
+const shellStyle = computed(() => ({
+    transform: `scale(${shellScale.value})`,
+    transformOrigin: 'center center',
+}));
+
+// ============================================================
+// 计算缩放：以 wrap 实际尺寸 / 外壳自然尺寸为比例，<1 才缩，>=1 不放大
+// ============================================================
+// 外壳自然尺寸 = 屏幕宽 + 横向 padding(10*2) + 高度 padding(14*2)（手机）
+// 平板：左右上下各 16，所以横纵向 padding 总和都是 32
+const PHONE_FRAME_W = 20; // 手机：14*2 padding 横向是 10*2 = 20
+const PHONE_FRAME_H = 28; // 手机：14 + 14 padding
+const TABLET_FRAME_W = 32;
+const TABLET_FRAME_H = 32;
+function recalcScale() {
+    const wrap = wrapRef.value;
+    if (!wrap) return;
+    const availW = wrap.clientWidth - 24;   // wrap 左右 padding 12*2
+    const availH = wrap.clientHeight - 16;  // wrap 上下 padding 8*2
+    const frameW = props.device === 'tablet' ? TABLET_FRAME_W : PHONE_FRAME_W;
+    const frameH = props.device === 'tablet' ? TABLET_FRAME_H : PHONE_FRAME_H;
+    const naturalW = props.deviceWidth + frameW;
+    const naturalH = props.deviceHeight + frameH;
+    if (availW <= 0 || availH <= 0) return;
+    const s = Math.min(availW / naturalW, availH / naturalH, 1);
+    shellScale.value = Math.max(s, 0.2);
+}
+
+let resizeObserver: ResizeObserver | null = null;
+watch(
+    () => [props.device, props.deviceWidth, props.deviceHeight],
+    () => nextTick().then(recalcScale)
+);
 
 // ============================================================
 // 防抖渲染
@@ -117,8 +153,8 @@ function collectCssLinks(): string {
 }
 
 const iframeSrcdoc = computed(() => {
-    if (props.device !== 'mobile') return '';
-    const w = props.orientation === 'portrait' ? props.deviceWidth : props.deviceHeight;
+    if (props.device === 'pc') return '';
+    const w = props.deviceWidth;
     return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -242,6 +278,617 @@ function bindCodeToggle(scope: Document | HTMLElement) {
 }
 
 // ============================================================
+// 代码块全屏 / 表格全屏 / Mermaid 全屏（移植自 portal-web）
+// ------------------------------------------------------------
+// 设计要点（admin-ui 改造）：
+// 1) 蒙层挂在「设备屏幕 / 预览容器」内部，不再覆盖整个浏览器视口
+//    - PC 模式 → root（.article-preview）
+//    - 手机/平板 → wrapRef 内的 .device-screen（在设备屏幕里全屏）
+// 2) 事件 handler 接受 scope: Document —— 用于 closest 查询源块
+//    （PC 模式 = 外层 document；手机/平板 = iframe.contentDocument）
+// 3) ESC 关闭挂在外层 window
+// 4) 不再锁 body.overflow / 不再 pushState：局部全屏无需这些全局副作用
+// 5) Mermaid SVG 跨 document 时用 document.importNode 保证节点归属外层 document
+// ============================================================
+
+/** 获取全屏蒙层应该挂载的容器：PC 用 root，手机/平板用设备屏幕 */
+function getOverlayMount(): HTMLElement | null {
+    if (props.device === 'pc') {
+        return root.value;
+    }
+    return (wrapRef.value?.querySelector('.device-screen') as HTMLElement | null) || null;
+}
+
+/** 是否需要把全屏蒙层旋转 90° 做伪横屏：仅手机时启用（手机统一竖屏） */
+function shouldRotateFullscreen(): boolean {
+    return props.device === 'phone';
+}
+
+/**
+ * 伪横屏（rotate 90° 顺时针）下，浏览器 wheel/touch 事件方向不会跟着旋转。
+ * 由于代码已经横着展示（屏幕长边 = 内容横向），用户的直觉是：
+ *  - 左右滑 → 滚到代码的下一行 / 上一行（垂直滚动）
+ *  - 上下滑 → 在当前行内左右移（水平滚动）
+ * rotate(90deg) 顺时针映射关系：
+ *  - 屏幕物理 X 方向 ↔ 内容 Y 方向（左滑=向下读 → scrollTop+）
+ *  - 屏幕物理 Y 方向 ↔ 内容 X 方向反向（上滑=往右看 → scrollLeft+）
+ * 实现：把原生 wheel/touch 的 dx/dy 映射到目标的 scrollTop/scrollLeft。
+ */
+function bindRotatedScroll(target: HTMLElement) {
+    // overscroll-behavior: contain 阻止 wheel/touch 在边界处冒泡到浏览器，
+    // 避免触控板左右滑触发浏览器的前进/后退手势
+    target.style.overscrollBehavior = 'contain';
+    // touch-action: none 让我们在触屏上完全接管手势（包括 swipe-to-go-back）
+    target.style.touchAction = 'none';
+
+    target.addEventListener(
+        'wheel',
+        (e: WheelEvent) => {
+            const dx = e.deltaX;
+            const dy = e.deltaY;
+            if (!dx && !dy) return;
+            // 始终 preventDefault：即使到边界也要吞掉，不让浏览器拿去做页面横滑
+            e.preventDefault();
+            // 屏幕水平滚（dx>0，向右）→ 内容向下读 → scrollTop 增加
+            target.scrollTop += dx;
+            // 屏幕垂直滚（dy>0，向下）→ 内容向左移（即 scrollLeft 减小）
+            target.scrollLeft -= dy;
+        },
+        { passive: false }
+    );
+
+    let lastX = 0;
+    let lastY = 0;
+    let active = false;
+    target.addEventListener(
+        'touchstart',
+        (e: TouchEvent) => {
+            if (e.touches.length !== 1) return;
+            active = true;
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+        },
+        { passive: true }
+    );
+    target.addEventListener(
+        'touchmove',
+        (e: TouchEvent) => {
+            if (!active || e.touches.length !== 1) return;
+            const t = e.touches[0];
+            const dx = t.clientX - lastX;
+            const dy = t.clientY - lastY;
+            lastX = t.clientX;
+            lastY = t.clientY;
+            // 始终 preventDefault：避免 iOS Safari 的边缘后退手势
+            e.preventDefault();
+            // 跟手拖拽（rotate 90° 顺时针）：
+            // 手指向左滑（dx<0）→ 内容向左跟随，等价于看下一行 → scrollTop 增加
+            // 手指向上滑（dy<0）→ 内容向上跟随，等价于看本行右侧 → scrollLeft 增加
+            target.scrollTop -= dx;
+            target.scrollLeft -= dy;
+        },
+        { passive: false }
+    );
+    target.addEventListener('touchend', () => {
+        active = false;
+    });
+    target.addEventListener('touchcancel', () => {
+        active = false;
+    });
+}
+
+const fullscreenState = {
+    overlay: null as HTMLElement | null,
+    triggerBtn: null as HTMLElement | null,
+    escHandler: null as ((e: KeyboardEvent) => void) | null,
+};
+
+const tableFsState = {
+    overlay: null as HTMLElement | null,
+    triggerBtn: null as HTMLElement | null,
+    escHandler: null as ((e: KeyboardEvent) => void) | null,
+};
+
+const mermaidFsState = {
+    overlay: null as HTMLElement | null,
+    triggerBtn: null as HTMLElement | null,
+    escHandler: null as ((e: KeyboardEvent) => void) | null,
+    scale: 1,
+    tx: 0,
+    ty: 0,
+    pinchStartDist: 0,
+    pinchStartScale: 1,
+};
+
+function closeCodeFullscreen() {
+    const s = fullscreenState;
+    if (!s.overlay) return;
+    s.overlay.remove();
+    s.overlay = null;
+    if (s.escHandler) {
+        document.removeEventListener('keydown', s.escHandler);
+        s.escHandler = null;
+    }
+    s.triggerBtn?.focus();
+    s.triggerBtn = null;
+}
+
+function closeTableFullscreen() {
+    const s = tableFsState;
+    if (!s.overlay) return;
+    s.overlay.remove();
+    s.overlay = null;
+    if (s.escHandler) {
+        document.removeEventListener('keydown', s.escHandler);
+        s.escHandler = null;
+    }
+    s.triggerBtn?.focus();
+    s.triggerBtn = null;
+}
+
+function closeMermaidFullscreen() {
+    const s = mermaidFsState;
+    if (!s.overlay) return;
+    s.overlay.remove();
+    s.overlay = null;
+    if (s.escHandler) {
+        document.removeEventListener('keydown', s.escHandler);
+        s.escHandler = null;
+    }
+    s.triggerBtn?.focus();
+    s.triggerBtn = null;
+}
+
+function handleCodeFullscreenClick(event: Event, scope: Document) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const btn = target.closest('.ssr-code-fullscreen') as HTMLButtonElement | null;
+    if (!btn) return;
+    // admin-ui：移动模式与 PC 模式都响应（PC 看长代码也有用）
+    const block = btn.closest('.ssr-code-block') as HTMLElement | null;
+    if (!block) return;
+    const codeEl = block.querySelector('pre code') as HTMLElement | null;
+    if (!codeEl) return;
+    const lang = block.getAttribute('data-lang') || 'text';
+    const lineCount = block.getAttribute('data-line-count') || '';
+    const codeInnerHtml = codeEl.innerHTML;
+
+    // 蒙层挂在外层 document.body
+    const overlay = document.createElement('div');
+    overlay.className = 'ssr-code-fs-overlay';
+    if (shouldRotateFullscreen()) overlay.classList.add('fs-rotate90');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', `代码全屏查看 ${lang}`);
+    overlay.innerHTML = `
+        <div class="ssr-code-fs-stage">
+            <div class="ssr-code-fs-head">
+                <span class="ssr-code-fs-info">${lang}${lineCount ? ` · ${lineCount} 行` : ''}</span>
+                <div class="ssr-code-fs-actions">
+                    <button class="ssr-code-fs-copy ssr-code-copy ssr-code-iconbtn" type="button" aria-label="复制代码" title="复制">
+                        <svg class="ssr-code-copy-icon ssr-code-copy-icon--default" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                        </svg>
+                        <svg class="ssr-code-copy-icon ssr-code-copy-icon--success" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        <svg class="ssr-code-copy-icon ssr-code-copy-icon--error" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                    <button class="ssr-code-fs-close ssr-code-iconbtn" type="button" aria-label="退出全屏" title="关闭">
+                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <pre class="ssr-code-fs-pre"><code class="hljs language-${lang}">${codeInnerHtml}</code></pre>
+        </div>
+    `;
+    const mount = getOverlayMount();
+    if (!mount) return;
+    mount.appendChild(overlay);
+
+    fullscreenState.overlay = overlay;
+    fullscreenState.triggerBtn = btn;
+
+    overlay.querySelector('.ssr-code-fs-close')?.addEventListener('click', closeCodeFullscreen);
+
+    // 蒙层内复制按钮：直接绑事件，避免依赖外层 bindCodeCopy 的 .ssr-code-block 上下文
+    const copyBtn = overlay.querySelector('.ssr-code-fs-copy') as HTMLButtonElement | null;
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            const codeNode = overlay.querySelector('.ssr-code-fs-pre code') as HTMLElement | null;
+            if (!codeNode) return;
+            const plain = (codeNode.textContent || '').replace(/\u200B/g, '');
+            const onSuccess = () => {
+                copyBtn.setAttribute('data-copy-state', 'success');
+                window.setTimeout(() => copyBtn.removeAttribute('data-copy-state'), 1500);
+            };
+            const onError = () => {
+                copyBtn.setAttribute('data-copy-state', 'error');
+                window.setTimeout(() => copyBtn.removeAttribute('data-copy-state'), 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(plain).then(onSuccess, () => {
+                    if (fallbackCopy(plain)) onSuccess();
+                    else onError();
+                });
+            } else if (fallbackCopy(plain)) onSuccess();
+            else onError();
+        });
+    }
+
+    fullscreenState.escHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') closeCodeFullscreen();
+    };
+    document.addEventListener('keydown', fullscreenState.escHandler);
+
+    // 伪横屏（手机竖屏全屏）下，stage 旋转了 90°，但浏览器的 wheel/touch
+    // 滚动仍走未旋转的物理方向；需要把垂直手势映射为代码区的水平滚动。
+    if (overlay.classList.contains('fs-rotate90')) {
+        const preEl = overlay.querySelector('.ssr-code-fs-pre') as HTMLElement | null;
+        if (preEl) bindRotatedScroll(preEl);
+    }
+
+    // 静默引用 scope，保留 API 一致
+    void scope;
+}
+
+function handleTableFullscreenClick(event: Event, scope: Document) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const btn = target.closest('.ssr-table-fs-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+    // 表格全屏：仅手机/平板模式响应（PC 模式无意义）
+    if (props.device === 'pc') return;
+
+    const wrap = btn.closest('.ssr-table-wrap') as HTMLElement | null;
+    if (!wrap) return;
+    const tableEl = wrap.querySelector('table') as HTMLTableElement | null;
+    if (!tableEl) return;
+
+    // 跨 document 安全克隆：先在源 document 内 cloneNode，再 importNode 进外层 document
+    const clonedSource = tableEl.cloneNode(true) as HTMLTableElement;
+    const clonedTable = document.importNode(clonedSource, true) as HTMLTableElement;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'ssr-table-fs-overlay';
+    if (shouldRotateFullscreen()) overlay.classList.add('fs-rotate90');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', '表格全屏查看');
+    overlay.innerHTML = `
+        <div class="ssr-table-fs-stage">
+            <div class="ssr-table-fs-head">
+                <span class="ssr-table-fs-info">表格全屏</span>
+                <div class="ssr-table-fs-actions">
+                    <button class="ssr-table-fs-close ssr-code-iconbtn" type="button" aria-label="退出全屏" title="关闭">
+                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="ssr-table-fs-body"></div>
+        </div>
+    `;
+    const bodyEl = overlay.querySelector('.ssr-table-fs-body') as HTMLElement;
+    bodyEl.appendChild(clonedTable);
+    const mount = getOverlayMount();
+    if (!mount) return;
+    mount.appendChild(overlay);
+
+    tableFsState.overlay = overlay;
+    tableFsState.triggerBtn = btn;
+
+    overlay.querySelector('.ssr-table-fs-close')?.addEventListener('click', closeTableFullscreen);
+
+    tableFsState.escHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') closeTableFullscreen();
+    };
+    document.addEventListener('keydown', tableFsState.escHandler);
+
+    // 伪横屏下，把垂直手势映射为表格容器的水平滚动
+    if (overlay.classList.contains('fs-rotate90')) {
+        bindRotatedScroll(bodyEl);
+    }
+    void scope;
+}
+
+function handleMermaidFullscreenClick(event: Event, scope: Document) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const btn = target.closest('.mermaid-fullscreen-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+    // Mermaid 全屏：PC + 移动模式都响应
+    const block = btn.closest('.mermaid-block') as HTMLElement | null;
+    if (!block) return;
+
+    // ⚠ 必须 scope 到 .mermaid-content 内，避开按钮自身的 svg icon
+    const contentEl = block.querySelector('.mermaid-content');
+    const svgEl = contentEl ? (contentEl.querySelector('svg') as SVGElement | null) : null;
+    const sourceEl = (contentEl || block).querySelector('.mermaid-source');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'mermaid-fs-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', '图表全屏查看');
+    overlay.innerHTML = `
+        <div class="mermaid-fs-toolbar">
+            <button class="mermaid-fs-btn" data-action="zoom-out" type="button" aria-label="缩小" title="缩小">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
+                </svg>
+            </button>
+            <span class="mermaid-fs-scale" aria-live="polite">100%</span>
+            <button class="mermaid-fs-btn" data-action="reset" type="button" aria-label="重置" title="重置缩放">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+                </svg>
+            </button>
+            <button class="mermaid-fs-btn" data-action="zoom-in" type="button" aria-label="放大" title="放大">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+            </button>
+            <button class="mermaid-fs-btn mermaid-fs-close" data-action="close" type="button" aria-label="关闭" title="关闭">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="mermaid-fs-stage">
+            <div class="mermaid-fs-canvas"></div>
+        </div>
+        <div class="mermaid-fs-tip">滚轮 / 双指缩放 · 拖拽平移</div>
+    `;
+
+    const canvas = overlay.querySelector('.mermaid-fs-canvas') as HTMLElement;
+    const stage = overlay.querySelector('.mermaid-fs-stage') as HTMLElement;
+    const scaleLabel = overlay.querySelector('.mermaid-fs-scale') as HTMLElement;
+
+    if (svgEl) {
+        // 取源 svg 实际渲染尺寸（兜底 600x400）
+        const origRect = svgEl.getBoundingClientRect();
+        const baseW = origRect.width || 600;
+        const baseH = origRect.height || 400;
+
+        // 跨 document 节点：先在源 document 克隆，再 importNode 到外层 document
+        const clonedSource = svgEl.cloneNode(true) as SVGElement;
+        const cloned = document.importNode(clonedSource, true) as SVGElement;
+        cloned.style.maxWidth = 'none';
+        cloned.style.maxHeight = 'none';
+        cloned.style.width = `${baseW}px`;
+        cloned.style.height = `${baseH}px`;
+        cloned.setAttribute('width', String(baseW));
+        cloned.setAttribute('height', String(baseH));
+        canvas.appendChild(cloned);
+    } else if (sourceEl) {
+        const pre = document.createElement('pre');
+        pre.className = 'mermaid-source';
+        pre.textContent = sourceEl.textContent || '';
+        canvas.appendChild(pre);
+    }
+
+    const mount = getOverlayMount();
+    if (!mount) return;
+    mount.appendChild(overlay);
+
+    const s = mermaidFsState;
+    s.scale = 1;
+    s.tx = 0;
+    s.ty = 0;
+    s.overlay = overlay;
+    s.triggerBtn = btn;
+
+    const MIN_SCALE = 0.2;
+    const MAX_SCALE = 6;
+    const applyTransform = () => {
+        canvas.style.transform = `translate(${s.tx}px, ${s.ty}px) scale(${s.scale})`;
+        scaleLabel.textContent = `${Math.round(s.scale * 100)}%`;
+    };
+
+    const zoomAtPoint = (pointX: number, pointY: number, nextScale: number) => {
+        const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale));
+        const ratio = clamped / s.scale;
+        const rect = stage.getBoundingClientRect();
+        const localX = pointX - rect.left;
+        const localY = pointY - rect.top;
+        s.tx = localX - ratio * (localX - s.tx);
+        s.ty = localY - ratio * (localY - s.ty);
+        s.scale = clamped;
+        applyTransform();
+    };
+
+    applyTransform();
+
+    const centerCanvas = () => {
+        requestAnimationFrame(() => {
+            const stageRect = stage.getBoundingClientRect();
+            const canvasRect = canvas.getBoundingClientRect();
+            s.tx += stageRect.left + stageRect.width / 2 - (canvasRect.left + canvasRect.width / 2);
+            s.ty += stageRect.top + stageRect.height / 2 - (canvasRect.top + canvasRect.height / 2);
+            applyTransform();
+        });
+    };
+
+    centerCanvas();
+
+    overlay.addEventListener('click', (e) => {
+        const t = (e.target as HTMLElement).closest('.mermaid-fs-btn') as HTMLButtonElement | null;
+        if (!t) return;
+        const action = t.getAttribute('data-action');
+        const rect = stage.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        if (action === 'zoom-in') zoomAtPoint(cx, cy, s.scale * 1.25);
+        else if (action === 'zoom-out') zoomAtPoint(cx, cy, s.scale / 1.25);
+        else if (action === 'reset') {
+            s.scale = 1;
+            s.tx = 0;
+            s.ty = 0;
+            applyTransform();
+            centerCanvas();
+        } else if (action === 'close') closeMermaidFullscreen();
+    });
+
+    stage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+        zoomAtPoint(e.clientX, e.clientY, s.scale * factor);
+    }, { passive: false });
+
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    stage.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        stage.style.cursor = 'grabbing';
+    });
+    const onMouseMove = (e: MouseEvent) => {
+        if (!dragging) return;
+        s.tx += e.clientX - lastX;
+        s.ty += e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        applyTransform();
+    };
+    const onMouseUp = () => {
+        dragging = false;
+        stage.style.cursor = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    let touchMode: 'none' | 'drag' | 'pinch' = 'none';
+    let touchStartX = 0;
+    let touchStartY = 0;
+    stage.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            touchMode = 'drag';
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            touchMode = 'pinch';
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            s.pinchStartDist = Math.hypot(dx, dy);
+            s.pinchStartScale = s.scale;
+        }
+    }, { passive: false });
+    stage.addEventListener('touchmove', (e) => {
+        if (touchMode === 'drag' && e.touches.length === 1) {
+            e.preventDefault();
+            const t = e.touches[0];
+            s.tx += t.clientX - touchStartX;
+            s.ty += t.clientY - touchStartY;
+            touchStartX = t.clientX;
+            touchStartY = t.clientY;
+            applyTransform();
+        } else if (touchMode === 'pinch' && e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            if (s.pinchStartDist === 0) return;
+            const nextScale = (s.pinchStartScale * dist) / s.pinchStartDist;
+            const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            zoomAtPoint(cx, cy, nextScale);
+        }
+    }, { passive: false });
+    stage.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) touchMode = 'none';
+        else if (e.touches.length === 1) {
+            touchMode = 'drag';
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }
+    });
+
+    const cleanup = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    };
+    const mo = new MutationObserver(() => {
+        if (!mount.contains(overlay)) {
+            cleanup();
+            mo.disconnect();
+        }
+    });
+    mo.observe(mount, { childList: true });
+
+    s.escHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') closeMermaidFullscreen();
+    };
+    document.addEventListener('keydown', s.escHandler);
+    void scope;
+}
+
+// 在指定 scope（PC 外层 document 或 iframe.contentDocument）上注册三类全屏按钮的点击委托。
+// 返回一个 unbind 函数，调用即可解除该 scope 上的所有监听。
+function bindFullscreenButtons(scope: Document): () => void {
+    const codeHandler = (e: Event) => handleCodeFullscreenClick(e, scope);
+    const tableHandler = (e: Event) => handleTableFullscreenClick(e, scope);
+    const mermaidHandler = (e: Event) => handleMermaidFullscreenClick(e, scope);
+    scope.addEventListener('click', codeHandler);
+    scope.addEventListener('click', tableHandler);
+    scope.addEventListener('click', mermaidHandler);
+    return () => {
+        scope.removeEventListener('click', codeHandler);
+        scope.removeEventListener('click', tableHandler);
+        scope.removeEventListener('click', mermaidHandler);
+    };
+}
+
+// 表格 overflow 检测：仅移动模式需要（PC 模式不显示表格全屏按钮）。
+// 监听 .ssr-table-scroll 尺寸变化，溢出时给父 .ssr-table-wrap 写 data-overflow="true"。
+let tableOverflowObserver: ResizeObserver | null = null;
+const observedTableScrolls = new WeakSet<HTMLElement>();
+function updateTableOverflowFlag(wrap: HTMLElement) {
+    const scrollEl = wrap.querySelector<HTMLElement>('.ssr-table-scroll');
+    if (!scrollEl) return;
+    if (scrollEl.scrollWidth - scrollEl.clientWidth > 1) {
+        wrap.setAttribute('data-overflow', 'true');
+    } else {
+        wrap.removeAttribute('data-overflow');
+    }
+}
+function disposeTableOverflowObserver() {
+    if (tableOverflowObserver) {
+        tableOverflowObserver.disconnect();
+        tableOverflowObserver = null;
+    }
+}
+function observeTableOverflow(scope: Document) {
+    if (typeof ResizeObserver === 'undefined') return;
+    // iframe 重载时 contentDocument 会重建，旧节点引用失效；先 disconnect 重建
+    disposeTableOverflowObserver();
+    tableOverflowObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+            const scrollEl = entry.target as HTMLElement;
+            const wrap = scrollEl.closest('.ssr-table-wrap') as HTMLElement | null;
+            if (wrap) updateTableOverflowFlag(wrap);
+        }
+    });
+    const wraps = scope.querySelectorAll<HTMLElement>('.ssr-table-wrap');
+    wraps.forEach((wrap) => {
+        const scrollEl = wrap.querySelector<HTMLElement>('.ssr-table-scroll');
+        if (!scrollEl) return;
+        if (observedTableScrolls.has(scrollEl)) return;
+        observedTableScrolls.add(scrollEl);
+        tableOverflowObserver?.observe(scrollEl);
+        updateTableOverflowFlag(wrap);
+    });
+}
+
+// ============================================================
 // Mermaid 渲染
 // ============================================================
 let mermaidLib: typeof import('mermaid').default | null = null;
@@ -289,6 +936,12 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
 }
 
 // ============================================================
+// 全屏按钮绑定：保存外层 / iframe 两套 unbind，便于切换/卸载时清理
+// ============================================================
+let unbindOuterFullscreen: (() => void) | null = null;
+let unbindInnerFullscreen: (() => void) | null = null;
+
+// ============================================================
 // iframe 加载完成后：在 iframe 内绑定事件 + 渲染 mermaid
 // ============================================================
 function handleIframeLoad() {
@@ -299,6 +952,12 @@ function handleIframeLoad() {
     bindCodeCopy(doc);
     bindCodeToggle(doc);
     void renderMermaidBlocks(doc.body);
+    // 先解绑上一次（iframe 重载场景）
+    unbindInnerFullscreen?.();
+    unbindInnerFullscreen = bindFullscreenButtons(doc);
+    // 仅移动模式下才需要表格 overflow 检测；此时 iframe contentDocument 重建，
+    // 在 iframe 内监听 .ssr-table-scroll 即可。
+    observeTableOverflow(doc);
 }
 
 // ============================================================
@@ -312,15 +971,63 @@ onMounted(() => {
         bindCodeCopy(root.value);
         bindCodeToggle(root.value);
     }
+    // 全屏按钮：PC 模式下，root 在外层 document 内，监听挂在外层 document
+    unbindOuterFullscreen = bindFullscreenButtons(document);
+    // 监听外层 wrap 尺寸变化，动态缩放手机外壳
+    if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(() => recalcScale());
+        if (wrapRef.value) resizeObserver.observe(wrapRef.value);
+    }
+    window.addEventListener('resize', recalcScale);
+    void nextTick().then(recalcScale);
 });
+
+// wrap 在 device 变化时才出现/消失，挂载后接入 observer
+watch(wrapRef, (el) => {
+    if (resizeObserver) {
+        resizeObserver.disconnect();
+        if (el) resizeObserver.observe(el);
+    }
+    void nextTick().then(recalcScale);
+});
+
+// device 模式切换：清理蒙层与 iframe 内绑定，外层绑定保持
+watch(
+    () => props.device,
+    () => {
+        closeCodeFullscreen();
+        closeTableFullscreen();
+        closeMermaidFullscreen();
+        unbindInnerFullscreen?.();
+        unbindInnerFullscreen = null;
+        disposeTableOverflowObserver();
+    }
+);
 
 onBeforeUnmount(() => {
     if (timer) window.clearTimeout(timer);
+    if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+    }
+    window.removeEventListener('resize', recalcScale);
+    // 解绑全屏按钮 click 监听
+    unbindOuterFullscreen?.();
+    unbindOuterFullscreen = null;
+    unbindInnerFullscreen?.();
+    unbindInnerFullscreen = null;
+    // 关闭可能仍存在的全屏蒙层
+    closeCodeFullscreen();
+    closeTableFullscreen();
+    closeMermaidFullscreen();
+    // 释放表格 overflow 监听
+    disposeTableOverflowObserver();
 });
 </script>
 
 <style scoped>
 .article-preview {
+    position: relative;
     min-height: 100%;
     background: #fff;
     box-sizing: border-box;
@@ -337,11 +1044,16 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-    padding: 24px 12px;
+    justify-content: center;
+    padding: 8px 12px;
     box-sizing: border-box;
     background: #f5f7fa;
     overflow: auto;
+}
+
+/* 竖屏：通过 transform: scale 自适应缩放，从根本上消除外层滚动条 */
+.mobile-frame-wrap.fit-portrait {
+    overflow: hidden;
 }
 
 .device-shell {
@@ -354,11 +1066,6 @@ onBeforeUnmount(() => {
         0 18px 36px rgba(0, 0, 0, 0.18),
         inset 0 0 0 2px #2a2a2a;
     flex-shrink: 0;
-}
-
-.device-shell.landscape {
-    border-radius: 28px;
-    padding: 10px 14px;
 }
 
 .device-notch {
@@ -375,10 +1082,6 @@ onBeforeUnmount(() => {
     pointer-events: none;
 }
 
-.device-shell.landscape .device-notch {
-    display: none;
-}
-
 .device-home {
     position: absolute;
     bottom: 6px;
@@ -388,10 +1091,6 @@ onBeforeUnmount(() => {
     height: 4px;
     background: #555;
     border-radius: 2px;
-}
-
-.device-shell.landscape .device-home {
-    display: none;
 }
 
 .device-screen {
@@ -410,24 +1109,20 @@ onBeforeUnmount(() => {
     background: #fff;
 }
 
-.device-meta {
-    margin-top: 12px;
-    color: #909399;
-    font-size: 12px;
-    letter-spacing: 0.5px;
-    user-select: none;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
+/* ============================================================ */
+/* 平板模式外壳：去掉刘海/Home 条，圆角更小，外框更细腻              */
+/* ============================================================ */
+.device-shell.device-shell--tablet {
+    border-radius: 18px;
+    padding: 16px;
 }
 
-.device-meta-label {
-    color: #303133;
-    font-weight: 500;
+.device-shell.device-shell--tablet .device-notch,
+.device-shell.device-shell--tablet .device-home {
+    display: none;
 }
 
-.device-meta-size {
-    color: #909399;
+.device-shell.device-shell--tablet .device-screen {
+    border-radius: 6px;
 }
 </style>

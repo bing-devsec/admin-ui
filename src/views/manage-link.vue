@@ -61,7 +61,7 @@ import { ref, onMounted, computed } from 'vue';
 import { ElMessageBox, ElNotification } from 'element-plus';
 import { Plus, Edit, Link } from '@element-plus/icons-vue';
 import updateLink from '../components/update-link.vue';
-import pagination from '../components/Pagination.vue';
+import pagination from '../components/pagination.vue';
 import _axios from '../utils/axios';
 
 const currentPage = ref(1);
