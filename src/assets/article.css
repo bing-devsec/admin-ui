@@ -363,6 +363,12 @@
     --admonition-border: #ead8bf;
 }
 
+.article-body-ssr .md-admonition--summary {
+    --admonition-accent: #0d9488;
+    --admonition-bg: #ecfdf6;
+    --admonition-border: #b8eee0;
+}
+
 /* 行内代码 */
 .article-body-ssr code {
     font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
@@ -1229,10 +1235,10 @@
     border-radius: 4px;
 }
 
-/* 分割线：与 H1 (#2c3e50) 同色系但更轻盈的藏青调，避免抢 H1 的视觉权重 */
+/* 分割线：使用极轻的浅灰，作为段落间的弱分隔，不抢正文视觉权重 */
 .article-body-ssr hr {
     border: 0;
-    border-top: 2px solid #4a6079;
+    border-top: 1px solid #e5e7eb;
     height: 0;
     background: transparent;
     margin: 1.6em 0;
@@ -1830,4 +1836,64 @@
 }
 .article-preview .ssr-table-fs-btn {
     display: none;
+}
+
+/* ============================================================ */
+/* 脚注（markdown-it-footnote）：[^1] 上标 + 底部 [^1]: 定义       */
+/* ============================================================ */
+.article-body-ssr .footnotes {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    color: #6b7280;
+    font-size: 0.9em;
+    line-height: 1.7;
+}
+.article-body-ssr .footnotes-sep {
+    display: none; /* 已经用 border-top 画了分隔线，去掉默认 hr */
+}
+.article-body-ssr .footnotes-list {
+    padding-left: 24px;
+    margin: 0;
+}
+.article-body-ssr .footnote-item {
+    margin-bottom: 8px;
+}
+.article-body-ssr .footnote-item p {
+    margin: 0;
+    display: inline;
+}
+.article-body-ssr .footnote-ref > a,
+.article-body-ssr .footnote-backref {
+    color: #2563eb;
+    text-decoration: none;
+    border-bottom: 0; /* 去掉正文 a 的虚线下划线，注脚链接保持纯净 */
+    padding: 0 2px;
+}
+.article-body-ssr .footnote-ref > a {
+    /* [^1] 在正文中渲染为上标 */
+    font-size: 0.85em;
+    vertical-align: super;
+    line-height: 0;
+}
+.article-body-ssr .footnote-ref > a:hover,
+.article-body-ssr .footnote-backref:hover {
+    text-decoration: underline;
+}
+.article-body-ssr .footnote-ref > a:target,
+.article-body-ssr .footnote-item:target {
+    /* 跳转后高亮目标，便于定位 */
+    background-color: #fef3c7;
+    border-radius: 3px;
+}
+/* 表头里的注脚：表头底色是深色（#4a6079）+ 白字，
+   注脚默认蓝色（#2563eb）在深底上对比度极差，几乎看不见。
+   这里把表头内的注脚 ref 强制改为白色，hover 加下划线即可，
+   保持与表头标题一致的视觉权重。 */
+.article-body-ssr table th .footnote-ref > a {
+    color: #fff;
+}
+.article-body-ssr table th .footnote-ref > a:hover {
+    color: #fff;
+    text-decoration: underline;
 }

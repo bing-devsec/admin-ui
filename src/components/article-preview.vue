@@ -193,6 +193,36 @@ ${cssLinks.value}
 </head>
 <body>
 <div class="article-body-ssr" id="ssr-root">${html.value || ''}</div>
+<scr` + `ipt>
+  // srcdoc iframe 下，<a href="#fn1"> 等锚点会因为 base URL 回退到父页面而触发整页导航。
+  // 这里拦截所有以 # 开头的链接，自己用 window.scrollTo 实现 iframe 内的页内跳转。
+  // 注意不能用 scrollIntoView：浏览器会沿祖先链触发外层 admin-ui 的滚动调整，
+  // 当 iframe 内部不需要滚动时（body 高度 <= 视口），父页面会把 iframe 整体往上顶。
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    while (t && t !== document) {
+      if (t.tagName === 'A') {
+        var href = t.getAttribute('href') || '';
+        if (href.charAt(0) === '#' && href.length > 1) {
+          e.preventDefault();
+          var id = decodeURIComponent(href.slice(1));
+          var el = document.getElementById(id);
+          if (el) {
+            var se = document.scrollingElement || document.documentElement;
+            // 只有 iframe 内部确实可滚动时才滚动；否则什么都不做（避免外层 device-shell 被顶动）
+            if (se && se.scrollHeight > se.clientHeight) {
+              var top = el.getBoundingClientRect().top + se.scrollTop;
+              se.scrollTo({ top: top, behavior: 'smooth' });
+            }
+            try { history.replaceState(null, '', '#' + id); } catch (_) {}
+          }
+          return;
+        }
+      }
+      t = t.parentNode;
+    }
+  });
+<` + `/script>
 </body>
 </html>`;
 });
@@ -961,6 +991,56 @@ function handleIframeLoad() {
 }
 
 // ============================================================
+// PC 模式脚注（[^1]）跳转：阻止浏览器把 #fnX 写到 URL，
+// 避免触发祖先链滚动，自己用最近的滚动祖先做平滑滚动。
+// iframe 模式下脚注跳转已在 srcdoc 内置脚本里处理（见上方 `<script>` 注入段），
+// 不会走到这里。
+// ============================================================
+function findScrollableAncestor(el: HTMLElement | null): HTMLElement | null {
+    let cur: HTMLElement | null = el?.parentElement || null;
+    while (cur && cur !== document.documentElement) {
+        const style = window.getComputedStyle(cur);
+        const oy = style.overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && cur.scrollHeight > cur.clientHeight) {
+            return cur;
+        }
+        cur = cur.parentElement;
+    }
+    return null;
+}
+
+function handleFootnoteClick(event: Event) {
+    const t = event.target as HTMLElement | null;
+    if (!t) return;
+    const a = t.closest('a') as HTMLAnchorElement | null;
+    if (!a) return;
+    const isRef = !!a.parentElement?.classList.contains('footnote-ref');
+    const isBackref = a.classList.contains('footnote-backref');
+    if (!isRef && !isBackref) return;
+    const href = a.getAttribute('href') || '';
+    if (!href.startsWith('#')) return;
+    let targetEl: HTMLElement | null = null;
+    try {
+        targetEl = document.querySelector(href) as HTMLElement | null;
+    } catch {
+        targetEl = null;
+    }
+    if (!targetEl) return;
+    event.preventDefault();
+    const container = findScrollableAncestor(root.value);
+    if (container) {
+        const cRect = container.getBoundingClientRect();
+        const tRect = targetEl.getBoundingClientRect();
+        container.scrollTo({
+            top: container.scrollTop + (tRect.top - cRect.top) - 12,
+            behavior: 'smooth',
+        });
+    } else {
+        targetEl.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+}
+
+// ============================================================
 // 生命周期
 // ============================================================
 onMounted(() => {
@@ -970,6 +1050,9 @@ onMounted(() => {
     if (props.device === 'pc' && root.value) {
         bindCodeCopy(root.value);
         bindCodeToggle(root.value);
+        // PC 模式：拦截脚注 [^1] / ↩ 跳转，避免浏览器把 #fnX 写到 URL 与触发祖先链滚动；
+        // 自定义平滑滚动到目标，保持 URL 干净。
+        root.value.addEventListener('click', handleFootnoteClick);
     }
     // 全屏按钮：PC 模式下，root 在外层 document 内，监听挂在外层 document
     unbindOuterFullscreen = bindFullscreenButtons(document);
@@ -1011,6 +1094,8 @@ onBeforeUnmount(() => {
         resizeObserver = null;
     }
     window.removeEventListener('resize', recalcScale);
+    // 解绑 PC 模式脚注 click 监听
+    if (root.value) root.value.removeEventListener('click', handleFootnoteClick);
     // 解绑全屏按钮 click 监听
     unbindOuterFullscreen?.();
     unbindOuterFullscreen = null;

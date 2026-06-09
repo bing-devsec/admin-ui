@@ -6,6 +6,8 @@
 //   2) heading id 生成、KaTeX、Shiki、mermaid 占位符等规则保持一致；
 //   3) COS srcset 注入 / 表格滚动外壳 / admonition 等也全部保留。
 import MarkdownIt from 'markdown-it';
+// @ts-ignore - markdown-it-footnote 没有官方类型声明
+import footnotePlugin from 'markdown-it-footnote';
 import katex from 'katex';
 import type { Highlighter, ThemedToken } from 'shiki';
 import { createHighlighter, bundledLanguages } from 'shiki';
@@ -17,10 +19,13 @@ const md = new MarkdownIt({
     typographer: true
 });
 
+// 启用 [^1] 脚注语法：[^1] 渲染为可点击上标 → 跳到底部 [^1]: ... 定义；定义末尾自动加 ↩ 返回锚点
+md.use(footnotePlugin);
+
 // ============================================================
 // 提示块（Admonition）：!!! tips/info/warning/error/success/thinking/example
 // ============================================================
-const ADMONITION_TYPES = new Set(['tips', 'info', 'warning', 'error', 'success', 'thinking', 'example']);
+const ADMONITION_TYPES = new Set(['tips', 'info', 'warning', 'error', 'success', 'thinking', 'example', 'summary']);
 const ADMONITION_DEFAULT_TITLES: Record<string, string> = {
     tips: '小技巧',
     info: '说明',
@@ -29,6 +34,7 @@ const ADMONITION_DEFAULT_TITLES: Record<string, string> = {
     success: '完成',
     thinking: '思考',
     example: '示例',
+    summary: '总结',
 };
 const ADMONITION_EMOJIS: Record<string, string> = {
     tips: '💡',
@@ -38,6 +44,7 @@ const ADMONITION_EMOJIS: Record<string, string> = {
     success: '🍺',
     thinking: '🤔',
     example: '🌰',
+    summary: '📌',
 };
 const ADMONITION_KIND_ALIASES: Record<string, string> = {
     tips: 'tips', tip: 'tips', 小技巧: 'tips', 技巧: 'tips', 提示: 'tips',
@@ -47,6 +54,7 @@ const ADMONITION_KIND_ALIASES: Record<string, string> = {
     success: 'success', 成功: 'success', 完成: 'success',
     thinking: 'thinking', think: 'thinking', 思考: 'thinking', 想法: 'thinking', 问题: 'thinking',
     example: 'example', 示例: 'example', 例子: 'example', 栗子: 'example',
+    summary: 'summary', abstract: 'summary', 总结: 'summary', 摘要: 'summary', 小结: 'summary', 概述: 'summary',
 };
 
 interface AdmonitionMeta {
@@ -119,7 +127,15 @@ md.renderer.rules.admonition = function (tokens, idx, _options, env) {
     if (!meta) return '';
 
     const hasBody = Boolean(meta.content.trim());
-    const bodyHtml = hasBody ? md.render(meta.content, env) : '';
+    let bodyHtml = hasBody ? md.render(meta.content, env) : '';
+    // admonition body 是嵌套独立渲染，markdown-it-footnote 会把内部的 [^1] 当成 ref，
+    // 但定义在外层文档，本次嵌套渲染收集不到 → 输出一段空的 footnotes section（"1. ↩"）。
+    // 外层文档的 footnote 流程会正确输出真实定义，所以这里把 body 内部产生的 footnotes section 整段移除。
+    if (bodyHtml) {
+        bodyHtml = bodyHtml
+            .replace(/<hr\s+class="footnotes-sep"[^>]*>/g, '')
+            .replace(/<section\s+class="footnotes"[\s\S]*?<\/section>/g, '');
+    }
     const safeTitle = md.utils.escapeHtml(meta.title);
     const emoji = md.utils.escapeHtml(ADMONITION_EMOJIS[meta.kind] || '📝');
     const rootClass = hasBody ? 'md-admonition' : 'md-admonition md-admonition--title-only';
