@@ -364,9 +364,9 @@
 }
 
 .article-body-ssr .md-admonition--summary {
-    --admonition-accent: #0d9488;
-    --admonition-bg: #ecfdf6;
-    --admonition-border: #b8eee0;
+    --admonition-accent: #0891b2;
+    --admonition-bg: #ecfeff;
+    --admonition-border: #a5f3fc;
 }
 
 /* 行内代码 */

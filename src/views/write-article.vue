@@ -25,7 +25,23 @@
                 <span class="toolbar-stat">{{ charCount }} 字 · {{ lineCount }} 行</span>
             </div>
             <div class="toolbar-right">
-                <el-button @click="insertSnippet('admonition')" link>提示块</el-button>
+                <el-dropdown trigger="click" @command="insertAdmonition">
+                    <el-button link>
+                        提示块<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item
+                                v-for="preset in ADMONITION_PRESETS"
+                                :key="preset.kind"
+                                :command="preset.kind"
+                            >
+                                <span class="admonition-menu-emoji">{{ preset.emoji }}</span>
+                                {{ preset.label }}
+                            </el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
                 <el-button @click="insertSnippet('code')" link>代码块</el-button>
                 <el-button @click="insertSnippet('table')" link>表格</el-button>
                 <el-button @click="insertSnippet('math')" link>公式</el-button>
@@ -53,7 +69,7 @@
                     v-model="displayContent"
                     class="md-textarea"
                     spellcheck="false"
-                    placeholder="开始撰写你的文章…&#10;&#10;支持：标题、列表、代码块（含语言标识）、表格、引用、提示块（!!! tips/info/warning/error/success/thinking/example）、KaTeX 公式（$...$ / $$...$$）、Mermaid 图表"
+                    placeholder="开始撰写你的文章…&#10;&#10;支持：标题、列表、代码块（含语言标识）、表格、引用、提示块（!!! tips/info/warning/error/success/thinking/example/summary）、KaTeX 公式（$...$ / $$...$$）、Mermaid 图表"
                     @paste="handlePaste"
                     @keydown="handleKeydown"
                     @scroll="handleEditorScroll"
@@ -90,7 +106,7 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { ElNotification } from 'element-plus';
-import { Promotion, MagicStick, Monitor, Iphone, Cellphone } from '@element-plus/icons-vue';
+import { Promotion, MagicStick, Monitor, Iphone, Cellphone, ArrowDown } from '@element-plus/icons-vue';
 import SubmitArticle from '../components/submit-article.vue';
 import ArticlePreview from '../components/article-preview.vue';
 import emitter from '../utils/event-bus.js';
@@ -214,16 +230,37 @@ function handleKeydown(e: KeyboardEvent) {
 // 工具栏：常用片段插入
 // ============================================================
 const SNIPPETS: Record<string, string> = {
-    admonition: '!!! tips 标题\n这里写提示内容\n!!!\n',
     code: '```js\nconsole.log("hello");\n```\n',
     table: '| 列 1 | 列 2 |\n| --- | --- |\n| A | B |\n',
     math: '$$\nE = mc^2\n$$\n',
     mermaid: '```mermaid\nflowchart LR\n    A[开始] --> B[结束]\n```\n',
 };
 
+// 提示块类型：与 utils/markdown.ts 的 ADMONITION_TYPES / EMOJIS / 默认标题保持一致
+const ADMONITION_PRESETS: { kind: string; emoji: string; label: string; title: string }[] = [
+    { kind: 'tips', emoji: '💡', label: '提示', title: '提示' },
+    { kind: 'info', emoji: '📘', label: '说明', title: '说明' },
+    { kind: 'warning', emoji: '⚠️', label: '注意', title: '注意' },
+    { kind: 'error', emoji: '❌', label: '错误', title: '错误' },
+    { kind: 'success', emoji: '🍺', label: '完成', title: '完成' },
+    { kind: 'thinking', emoji: '🤔', label: '思考', title: '思考' },
+    { kind: 'example', emoji: '🌰', label: '示例', title: '示例' },
+    { kind: 'summary', emoji: '📌', label: '总结', title: '总结' },
+];
+
 function insertSnippet(key: string) {
     const snippet = SNIPPETS[key];
     if (!snippet) return;
+    insertText(snippet);
+}
+
+function insertAdmonition(kind: string) {
+    const preset = ADMONITION_PRESETS.find((p) => p.kind === kind);
+    if (!preset) return;
+    insertText(`!!! ${preset.kind} ${preset.title}\n这里写${preset.label}内容\n!!!\n`);
+}
+
+function insertText(snippet: string) {
     const ta = editor.value;
     if (!ta) {
         displayContent.value = (displayContent.value ? displayContent.value + '\n' : '') + snippet;
@@ -391,6 +428,10 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+.admonition-menu-emoji {
+    margin-right: 8px;
 }
 
 .write-body {
