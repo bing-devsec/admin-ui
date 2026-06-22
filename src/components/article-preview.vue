@@ -923,6 +923,19 @@ function observeTableOverflow(scope: Document) {
 // ============================================================
 let mermaidLib: typeof import('mermaid').default | null = null;
 let mermaidIdCounter = 0;
+const MERMAID_FONT_FAMILY =
+    '-apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", "Segoe UI", Arial, sans-serif';
+const MERMAID_THEME_CSS = `
+  .nodeLabel,
+  .edgeLabel,
+  .cluster-label,
+  foreignObject,
+  foreignObject div,
+  foreignObject span,
+  foreignObject p {
+    line-height: 1.2;
+  }
+`;
 async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
     if (!scope) return;
     const blocks = scope.querySelectorAll<HTMLDivElement>(
@@ -936,8 +949,17 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
             mermaidLib.initialize({
                 startOnLoad: false,
                 theme: 'default',
+                themeCSS: MERMAID_THEME_CSS,
+                themeVariables: {
+                    fontFamily: MERMAID_FONT_FAMILY,
+                },
                 securityLevel: 'loose',
-                flowchart: { htmlLabels: true, curve: 'basis' },
+                flowchart: {
+                    htmlLabels: true,
+                    curve: 'basis',
+                    padding: 12,
+                    diagramPadding: 12,
+                },
             });
         } catch (err) {
             console.error('[mermaid] 加载失败', err);
