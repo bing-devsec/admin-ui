@@ -961,8 +961,7 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
                     diagramPadding: 12,
                 },
             });
-        } catch (err) {
-            console.error('[mermaid] 加载失败', err);
+        } catch (_err) {
             return;
         }
     }

@@ -85,7 +85,7 @@ const size = ref('default')
 const labelPosition = ref('right')
 
 const aboutMe = reactive({
-    id: '',
+    userID: '',
     name: '冰冰同学',
     job: '',
     workLife: '',
@@ -98,7 +98,7 @@ const aboutMe = reactive({
 })
 
 const initialAboutMe = {
-    id: '',
+    userID: '',
     name: '冰冰同学',
     job: '',
     workLife: '',
@@ -158,7 +158,7 @@ async function onSubmit() {
         return;
     }
 
-    aboutMe.id = localStorage.getItem('userID') || '';
+    aboutMe.userID = localStorage.getItem('userID') || '';
 
     const aboutMeInfo = {
         name: aboutMe.name,
@@ -195,7 +195,7 @@ async function onSubmit() {
 
     try {
         const response = await _axios.put('/admin/auth/about-me', {
-            id: aboutMe.id,
+            userID: aboutMe.userID,
             ...aboutMeInfo,
             ...websiteInfo,
             ...contactMeInfo,

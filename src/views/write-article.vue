@@ -230,10 +230,10 @@ function handleKeydown(e: KeyboardEvent) {
 // 工具栏：常用片段插入
 // ============================================================
 const SNIPPETS: Record<string, string> = {
-    code: '```js\nconsole.log("hello");\n```\n',
-    table: '| 列 1 | 列 2 |\n| --- | --- |\n| A | B |\n',
-    math: '$$\nE = mc^2\n$$\n',
-    mermaid: '```mermaid\nflowchart LR\n    A[开始] --> B[结束]\n```\n',
+    code: '```bash\nls\n```',
+    table: '| 列 1 | 列 2 |\n| --- | --- |\n| A | B |',
+    math: '$$\nE = mc^2\n$$',
+    mermaid: '```mermaid\nflowchart LR\n    A[开始] --> B[结束]\n```',
 };
 
 // 提示块类型：与 utils/markdown.ts 的 ADMONITION_TYPES / EMOJIS / 默认标题保持一致

@@ -13,9 +13,9 @@
 								<!-- 默认显示用户名和密码输入框 -->
 								<div v-if="!show2FA">
 									<el-input v-model="username" clearable type="text" size="large"
-										placeholder="账号"></el-input>
+										:disabled="passwordLoginCooldown > 0" placeholder="账号"></el-input>
 									<el-input v-model="password" clearable type="password" size="large"
-										placeholder="密码"></el-input>
+										:disabled="passwordLoginCooldown > 0" placeholder="密码"></el-input>
 								</div>
 
 								<div v-if="show2FA && qrCodeURL" class="twoFA">
@@ -28,7 +28,10 @@
 									<div class="code-boxes">
 										<input v-for="(digit, index) in 6" :key="index" v-model="dynamicCode[index]"
 											@input="onInput(index, $event)" @keydown="onKeyDown(index, $event)"
-											maxlength="1" type="text" :ref="el => { if (el) codeInputs[index] = el }">
+											maxlength="1" type="text" :disabled="dynamicCodeCooldown > 0" :ref="(el) => {
+													if (el) codeInputs[index] = el;
+												}
+												" />
 									</div>
 								</div>
 							</el-tab-pane>
@@ -52,7 +55,8 @@
 					</form>
 				</div>
 				<div class="button">
-					<el-button plain type="primary" @click="handleButtonClick">{{ loginButtonText }}</el-button>
+					<el-button plain type="primary" :disabled="isLoginButtonDisabled" :loading="isLoginSubmitting"
+						@click="handleButtonClick">{{ effectiveLoginButtonText }}</el-button>
 				</div>
 			</div>
 		</div>
@@ -60,10 +64,36 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, watch, computed, nextTick, onMounted, onUnmounted } from "vue";
+import {
+	ref,
+	reactive,
+	watch,
+	computed,
+	nextTick,
+	onMounted,
+	onUnmounted,
+	type Ref,
+} from "vue";
 import { useRouter } from "vue-router";
 import { ElNotification } from "element-plus";
 import Ribbons from "../utils/ribbon";
+
+const TOO_MANY_REQUESTS_CODE = 4290;
+
+type RateLimitData = {
+	retryAfter?: number;
+};
+
+type RateLimitErrorResponse = {
+	response?: {
+		status?: number;
+		data?: {
+			code?: number;
+			message?: string;
+			data?: RateLimitData;
+		};
+	};
+};
 
 // 定义响应式数据
 const router = useRouter();
@@ -73,13 +103,35 @@ const phone = ref("");
 const smsCode = ref("");
 const countDown = ref(0);
 const show2FA = ref(false);
-const dynamicCode = ref(['', '', '', '', '', '']);
+const dynamicCode = ref(["", "", "", "", "", ""]);
 const codeInputs = reactive([]);
-const qrCodeURL = ref('');
+const qrCodeURL = ref("");
 const isBinding2FA = ref(false);
+const loginChallenge = ref("");
 const activeTab = ref("password-login");
-const buttonText = computed(() => { return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码"; });
+const isLoginSubmitting = ref(false);
+const passwordLoginCooldown = ref(0);
+const dynamicCodeCooldown = ref(0);
+const buttonText = computed(() => {
+	return countDown.value > 0 ? `${countDown.value} 秒` : "发送验证码";
+});
 const loginButtonText = ref("登录");
+const currentLoginCooldown = computed(() => {
+	if (activeTab.value !== "password-login") {
+		return 0;
+	}
+	return show2FA.value
+		? dynamicCodeCooldown.value
+		: passwordLoginCooldown.value;
+});
+const isLoginButtonDisabled = computed(
+	() => isLoginSubmitting.value || currentLoginCooldown.value > 0,
+);
+const effectiveLoginButtonText = computed(() => {
+	return currentLoginCooldown.value > 0
+		? `${currentLoginCooldown.value} 秒后重试`
+		: loginButtonText.value;
+});
 
 watch(show2FA, async (val) => {
 	if (val && !qrCodeURL.value) {
@@ -89,6 +141,91 @@ watch(show2FA, async (val) => {
 });
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
+let loginCooldownTimerId: ReturnType<typeof setInterval> | null = null;
+
+const stopLoginCooldownTimer = () => {
+	if (loginCooldownTimerId) {
+		clearInterval(loginCooldownTimerId);
+		loginCooldownTimerId = null;
+	}
+};
+
+const ensureLoginCooldownTimer = () => {
+	if (loginCooldownTimerId) {
+		return;
+	}
+	loginCooldownTimerId = setInterval(() => {
+		if (passwordLoginCooldown.value > 0) {
+			passwordLoginCooldown.value--;
+		}
+		if (dynamicCodeCooldown.value > 0) {
+			dynamicCodeCooldown.value--;
+		}
+		if (passwordLoginCooldown.value <= 0 && dynamicCodeCooldown.value <= 0) {
+			stopLoginCooldownTimer();
+		}
+	}, 1000);
+};
+
+const startLoginCooldown = (target: Ref<number>, seconds: number) => {
+	target.value = Math.max(1, Math.ceil(seconds));
+	ensureLoginCooldownTimer();
+};
+
+const clearLoginCooldowns = () => {
+	passwordLoginCooldown.value = 0;
+	dynamicCodeCooldown.value = 0;
+	stopLoginCooldownTimer();
+};
+
+const getRetryAfterSeconds = (data: RateLimitData | undefined) => {
+	const retryAfter = Number(data?.retryAfter);
+	return Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60;
+};
+
+const handleRateLimitResponse = (
+	code: number,
+	message: string,
+	data: RateLimitData | undefined,
+	target: Ref<number>,
+) => {
+	if (code !== TOO_MANY_REQUESTS_CODE) {
+		return false;
+	}
+	const retryAfter = getRetryAfterSeconds(data);
+	startLoginCooldown(target, retryAfter);
+	ElNotification({
+		title: "Warning",
+		message: `${message || "请求过于频繁，请稍后再试"}，${Math.ceil(retryAfter)} 秒后重试`,
+		type: "warning",
+	});
+	return true;
+};
+
+const handleRateLimitError = (error: unknown, target: Ref<number>) => {
+	const { response } = error as RateLimitErrorResponse;
+	if (
+		!response ||
+		(response.status !== 429 && response.data?.code !== TOO_MANY_REQUESTS_CODE)
+	) {
+		return false;
+	}
+	return handleRateLimitResponse(
+		TOO_MANY_REQUESTS_CODE,
+		response.data?.message || "请求过于频繁，请稍后再试",
+		response.data?.data,
+		target,
+	);
+};
+
+const resetPasswordLoginState = () => {
+	show2FA.value = false;
+	qrCodeURL.value = "";
+	loginChallenge.value = "";
+	dynamicCode.value = ["", "", "", "", "", ""];
+	isBinding2FA.value = false;
+	loginButtonText.value = "登录";
+};
 
 const onInput = (index: number, event: Event) => {
 	const input = event.target as HTMLInputElement;
@@ -96,7 +233,7 @@ const onInput = (index: number, event: Event) => {
 
 	// 确保输入的是单个数字
 	if (!/^\d*$/.test(value)) {
-		dynamicCode.value[index] = '';
+		dynamicCode.value[index] = "";
 		return;
 	}
 
@@ -107,19 +244,22 @@ const onInput = (index: number, event: Event) => {
 };
 
 const onKeyDown = (index: number, event: KeyboardEvent) => {
-	if (event.key === 'Backspace' && !dynamicCode.value[index] && index > 0) {
+	if (event.key === "Backspace" && !dynamicCode.value[index] && index > 0) {
 		codeInputs[index - 1].focus();
 	}
 };
 
 // 返回登录方式函数
 const handleButtonClick = () => {
-	if (activeTab.value === 'password-login') {
+	if (isLoginButtonDisabled.value) {
+		return;
+	}
+	if (activeTab.value === "password-login") {
 		if (!show2FA.value) {
 			passwordLogin();
 		} else if (qrCodeURL.value) {
 			show2FA.value = true;
-			qrCodeURL.value = '';
+			qrCodeURL.value = "";
 			loginButtonText.value = "登录";
 		} else {
 			verifyDynamicCode();
@@ -140,42 +280,60 @@ const passwordLogin = async () => {
 		return;
 	}
 	const reqData = { username: username.value, password: password.value };
+	isLoginSubmitting.value = true;
 	try {
 		const response = await window.$axios.post("/admin/account-login", reqData);
 		const { code, message, data } = response.data;
 		if (code !== 2000 || message !== "") {
+			if (handleRateLimitResponse(code, message, data, passwordLoginCooldown)) {
+				return;
+			}
 			ElNotification({
 				title: "Failed",
 				message: "登录失败",
 				type: "error",
 			});
 		} else {
-			if (data && data.qrCodeURL && data.userID) {
-				localStorage.setItem("userID", data.userID);
+			if (!data?.loginChallenge) {
+				ElNotification({
+					title: "Failed",
+					message: "登录状态初始化失败，请重新登录",
+					type: "error",
+				});
+				resetPasswordLoginState();
+				return;
+			}
+			loginChallenge.value = data.loginChallenge;
+			dynamicCode.value = ["", "", "", "", "", ""];
+			if (data.qrCodeURL) {
 				qrCodeURL.value = data.qrCodeURL;
 				show2FA.value = true;
 				loginButtonText.value = "已完成绑定";
 				isBinding2FA.value = true;
 			} else {
-				localStorage.setItem("userID", data.userID);
+				qrCodeURL.value = "";
 				show2FA.value = true;
 				loginButtonText.value = "登录";
 				isBinding2FA.value = false;
 			}
 		}
 	} catch (error) {
-		console.error("account-login error:", error);
+		if (handleRateLimitError(error, passwordLoginCooldown)) {
+			return;
+		}
 		ElNotification({
 			title: "Error",
 			message: "登录失败，请稍后重试",
 			type: "error",
 		});
+	} finally {
+		isLoginSubmitting.value = false;
 	}
 };
 
 // 验证动态验证码
 const verifyDynamicCode = async () => {
-	const code = dynamicCode.value.join('');
+	const code = dynamicCode.value.join("");
 	if (code.length !== 6) {
 		ElNotification({
 			title: "Warning",
@@ -184,15 +342,29 @@ const verifyDynamicCode = async () => {
 		});
 		return;
 	}
-	const userID = localStorage.getItem("userID");
-	const reqData = { code: code, userID: userID };
+	if (!loginChallenge.value) {
+		ElNotification({
+			title: "Warning",
+			message: "登录状态已过期，请重新输入账号密码",
+			type: "warning",
+		});
+		resetPasswordLoginState();
+		return;
+	}
+	const reqData = { code: code, loginChallenge: loginChallenge.value };
+	isLoginSubmitting.value = true;
 	try {
-		const apiPath = isBinding2FA.value ? "/admin/bind-dynamic-code" : "/admin/verify-dynamic-code";
+		const apiPath = isBinding2FA.value
+			? "/admin/bind-dynamic-code"
+			: "/admin/verify-dynamic-code";
 		const response = await window.$axios.post(apiPath, reqData);
 		const { code, message, data } = response.data;
 		if (code === 2000 && message === "") {
 			handleLoginSuccess(data);
 		} else {
+			if (handleRateLimitResponse(code, message, data, dynamicCodeCooldown)) {
+				return;
+			}
 			ElNotification({
 				title: "Failed",
 				message: "验证失败",
@@ -200,23 +372,38 @@ const verifyDynamicCode = async () => {
 			});
 		}
 	} catch (error) {
-		console.error("verify-dynamic-code error:", error);
+		if (handleRateLimitError(error, dynamicCodeCooldown)) {
+			return;
+		}
 		ElNotification({
 			title: "Error",
 			message: "验证失败，请稍后重试",
 			type: "error",
 		});
+	} finally {
+		isLoginSubmitting.value = false;
 	}
 };
 
 // 处理登录成功的函数
 const handleLoginSuccess = (data: { userID: string }) => {
 	const { userID } = data || {};
+	if (!userID) {
+		ElNotification({
+			title: "Failed",
+			message: "登录响应缺少用户信息",
+			type: "error",
+		});
+		return;
+	}
 	// access_token / refresh_token 由后端以 HttpOnly Cookie 下发，前端不再持有
 	localStorage.setItem("userID", userID);
+	loginChallenge.value = "";
+	dynamicCode.value = ["", "", "", "", "", ""];
+	clearLoginCooldowns();
 
 	Ribbons.stop();
-	router.push("/home/manage-article").catch(() => {});
+	router.push("/home/manage-article").catch(() => { });
 };
 
 // 短信登录
@@ -231,6 +418,7 @@ const smsLogin = async () => {
 	}
 
 	const reqData = { phone: phone.value, code: smsCode.value };
+	isLoginSubmitting.value = true;
 	try {
 		const response = await window.$axios.post("/admin/sms-login", reqData);
 		const { code, message, data } = response.data;
@@ -244,12 +432,13 @@ const smsLogin = async () => {
 			});
 		}
 	} catch (error) {
-		console.error("sms-login error:", error);
 		ElNotification({
 			title: "Error",
 			message: "登录失败，请稍后重试",
 			type: "error",
 		});
+	} finally {
+		isLoginSubmitting.value = false;
 	}
 };
 
@@ -289,7 +478,6 @@ const sendCode = async () => {
 				});
 			}
 		} catch (error) {
-			console.error("sms-code error:", error);
 			ElNotification({
 				title: "Error",
 				message: "验证码发送失败，请稍后重试",
@@ -324,6 +512,11 @@ onMounted(() => {
 // 组件卸载时停止动画，避免 RAF 循环 / 事件监听 / canvas 残留
 onUnmounted(() => {
 	Ribbons.stop();
+	stopLoginCooldownTimer();
+	if (intervalId) {
+		clearInterval(intervalId);
+		intervalId = null;
+	}
 });
 
 // 监听 activeTab 的变化
@@ -332,9 +525,10 @@ watch(activeTab, () => {
 	password.value = "";
 	phone.value = "";
 	smsCode.value = "";
-	dynamicCode.value = ['', '', '', '', '', ''];
+	dynamicCode.value = ["", "", "", "", "", ""];
 	show2FA.value = false;
-	qrCodeURL.value = '';
+	qrCodeURL.value = "";
+	loginChallenge.value = "";
 	loginButtonText.value = "登录";
 
 	if (intervalId) {

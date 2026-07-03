@@ -13,7 +13,7 @@ import type { Highlighter, ThemedToken } from 'shiki';
 import { createHighlighter, bundledLanguages } from 'shiki';
 
 const md = new MarkdownIt({
-    html: true,
+    html: false,
     linkify: true,
     breaks: true,
     typographer: true
