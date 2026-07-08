@@ -42,11 +42,12 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, toRefs } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, toRefs } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessageBox, ElNotification } from 'element-plus'
 import emitter from '../utils/event-bus.js'
 import _axios from '../utils/axios';
+const route = useRoute();
 const router = useRouter();
 
 const emit = defineEmits(['selection-change', 'refresh']);
@@ -116,7 +117,10 @@ const handleEdit = async (_index: number, row: Article) => {
             content.value = data.content;
             describe.value = data.describe;
 
-            router.push("/home/write-article").then(() => {
+            router.push({
+                path: "/home/write-article",
+                query: { redirect: route.fullPath },
+            }).then(() => {
                 emitter.emit("updateArticle", {
                     id: row.id,
                     title: title.value,

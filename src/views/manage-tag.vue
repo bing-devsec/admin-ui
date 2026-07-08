@@ -24,17 +24,21 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router';
 import { ElNotification } from "element-plus";
 import updateTag from '../components/update-tag.vue';
 import tagArticleList from '../components/tag-article-list.vue'
 import pagination from '../components/pagination.vue'
 import _axios from '../utils/axios'
 
+const route = useRoute();
+const router = useRouter();
+
 const isReady = ref(false);
 const activeTag = ref('');
 const tags = ref<string[]>([]);
 const articleList = ref<any[]>([]);
-const currentPage = ref(1);
+const currentPage = ref(parsePositivePage(route.query.page));
 const pageSize = 10;
 const total = ref(0);
 const dialogVisible = ref(false)
@@ -44,8 +48,33 @@ const handleSelectionChange = (selection: any[]) => {
     selectedID.value = selection.map(item => item.id);
 };
 
+// firstQueryValue 读取 query 中的第一个字符串值。
+function firstQueryValue(value: unknown): string {
+    if (Array.isArray(value)) {
+        return typeof value[0] === 'string' ? value[0] : '';
+    }
+    return typeof value === 'string' ? value : '';
+}
+
+// parsePositivePage 把 URL query 转为正整数页码。
+function parsePositivePage(value: unknown): number {
+    const page = Number.parseInt(firstQueryValue(value), 10);
+    return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+// syncRouteState 把当前专栏管理状态写入 URL。
+function syncRouteState() {
+    router.replace({
+        path: route.path,
+        query: {
+            tag: activeTag.value,
+            page: String(currentPage.value),
+        },
+    }).catch(() => { });
+}
+
 onMounted(async () => {
-    await fetchTagList()
+    await fetchTagList(firstQueryValue(route.query.tag))
     nextTick(() => {
         isReady.value = true
     })
@@ -62,7 +91,9 @@ const fetchTagList = async (currentActiveTag: string = '') => {
                     activeTag.value = currentActiveTag;
                 } else {
                     activeTag.value = tags.value[0];
+                    currentPage.value = 1;
                 }
+                syncRouteState();
                 await fetchArticleList();
             }
         } else {
@@ -113,11 +144,13 @@ const fetchArticleList = async () => {
 
 const handleCurrentChange = async (newPage: number) => {
     currentPage.value = newPage
+    syncRouteState();
     await fetchArticleList()
 }
 
 const handleTabClick = async () => {
     currentPage.value = 1
+    syncRouteState();
     await fetchArticleList()
 }
 
