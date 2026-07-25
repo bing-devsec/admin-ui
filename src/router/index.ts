@@ -30,6 +30,16 @@ const routes: RouteRecordRaw[] = [
                 meta: { requiresAuth: true },
             },
             {
+                path: 'manage-comment',
+                component: () => import('@/views/manage-comment.vue'),
+                meta: { requiresAuth: true },
+            },
+            {
+                path: 'manage-user',
+                component: () => import('@/views/manage-user.vue'),
+                meta: { requiresAuth: true },
+            },
+            {
                 path: 'about-me',
                 component: () => import('@/views/about-me.vue'),
                 meta: { requiresAuth: true },

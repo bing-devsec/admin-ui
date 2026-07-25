@@ -1,38 +1,40 @@
 <template>
-	<div class="tabs-container">
-		<el-tabs type="border-card" v-model="activeTab" class="demo-tabs">
-			<el-tab-pane name="按发布时间" label="按发布时间">
-				<template #label>
-					<span class="custom-tabs-label">
-						<el-icon>
-							<Calendar />
-						</el-icon>
-						<span>按发布时间</span>
-					</span>
-				</template>
-				<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"
-					@refreshData="refreshCurrentPageData">
-				</articleManageTab>
-			</el-tab-pane>
+	<div class="article-page">
+		<div class="tabs-container">
+			<el-tabs type="border-card" v-model="activeTab" class="demo-tabs">
+				<el-tab-pane name="按发布时间" label="按发布时间">
+					<template #label>
+						<span class="custom-tabs-label">
+							<el-icon>
+								<Calendar />
+							</el-icon>
+							<span>按发布时间</span>
+						</span>
+					</template>
+					<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"
+						@refreshData="refreshCurrentPageData">
+					</articleManageTab>
+				</el-tab-pane>
 
-			<el-tab-pane name="按浏览量" label="按浏览量">
-				<template #label>
-					<span class="custom-tabs-label">
-						<el-icon>
-							<View />
-						</el-icon>
-						<span>按浏览量</span>
-					</span>
-				</template>
-				<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"
-					@refreshData="refreshCurrentPageData"></articleManageTab>
-			</el-tab-pane>
-		</el-tabs>
+				<el-tab-pane name="按浏览量" label="按浏览量">
+					<template #label>
+						<span class="custom-tabs-label">
+							<el-icon>
+								<View />
+							</el-icon>
+							<span>按浏览量</span>
+						</span>
+					</template>
+					<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"
+						@refreshData="refreshCurrentPageData"></articleManageTab>
+				</el-tab-pane>
+			</el-tabs>
+		</div>
+
+		<pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
+			@handleCurrentChange="handleCurrentChange">
+		</pagination>
 	</div>
-
-	<pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
-		@handleCurrentChange="handleCurrentChange">
-	</pagination>
 </template>
 
 <script lang="ts" setup>
@@ -156,16 +158,32 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.tabs-container {
-	max-height: 100%;
-	overflow-y: auto;
-	margin-bottom: 45px;
+.article-page {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
 }
 
-.demo-tabs>.el-tabs__content {
+.tabs-container {
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.demo-tabs {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.demo-tabs :deep(.el-tabs__content) {
 	color: #6b778c;
+	flex: 1;
 	font-size: 32px;
 	font-weight: 400;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 .demo-tabs .custom-tabs-label .el-icon {

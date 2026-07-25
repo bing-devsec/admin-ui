@@ -2,6 +2,9 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
 import ElementPlus from 'element-plus';
+import zhCn from 'element-plus/es/locale/lang/zh-cn';
+import dayjs from 'dayjs';
+import 'dayjs/locale/zh-cn';
 
 import './assets/base.css';
 import 'element-plus/dist/index.css';
@@ -12,8 +15,10 @@ import _axios from './utils/axios';
 
 const app = createApp(App);
 
+dayjs.locale('zh-cn');
+
 app.use(router);
-app.use(ElementPlus);
+app.use(ElementPlus, { locale: zhCn });
 
 app.config.globalProperties.$axios = _axios;
 window.$axios = _axios;

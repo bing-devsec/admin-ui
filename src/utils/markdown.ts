@@ -13,7 +13,7 @@ import type { Highlighter, ThemedToken } from 'shiki';
 import { createHighlighter, bundledLanguages } from 'shiki';
 
 const md = new MarkdownIt({
-    html: false,
+    html: true,
     linkify: true,
     breaks: true,
     typographer: true
@@ -658,6 +658,41 @@ function ensureImgAttributes(html: string): string {
 
         return `<img${next}>`;
     });
+}
+
+export interface CatalogHeading {
+    id: string;
+    text: string;
+    level: number;
+}
+
+/**
+ * 从 markdown-it 渲染好的 HTML 字符串里抽取目录标题。
+ * 与 portal-web 的 CatalogRenderer 输入保持一致。
+ */
+export function extractHeadingsFromHtml(html: string | undefined | null, maxLevel = 3): CatalogHeading[] {
+    if (!html) return [];
+
+    const headings: CatalogHeading[] = [];
+    const regex = /<h([1-6])\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/h\1>/gi;
+
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(html)) !== null) {
+        const level = Number(match[1]);
+        if (level > maxLevel) continue;
+
+        const id = match[2];
+        const innerHtml = match[3] || '';
+        const text = innerHtml
+            .replace(/<[^>]+>/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (!id || !text) continue;
+        headings.push({ id, text, level });
+    }
+
+    return headings;
 }
 
 /**

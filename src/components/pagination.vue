@@ -4,19 +4,23 @@
 </template>
 
 <script lang="ts" setup>
-import { toRefs, ref } from 'vue'
-const props = defineProps<{ total: number }>()
-let { total } = toRefs(props)
+withDefaults(defineProps<{
+    total: number;
+    currentPage?: number;
+    pageSize?: number;
+}>(), {
+    currentPage: 1,
+    pageSize: 10,
+});
 
-const emit = defineEmits(['handleCurrentChange'])
+const emit = defineEmits<{
+    (event: 'handleCurrentChange', page: number): void;
+}>();
 
-let currentPage = ref(1);
-let pageSize = ref(10);
-let pagerCount = 9;
+const pagerCount = 9;
 
 const handlePageChange = (newPage: number) => {
-    currentPage.value = newPage;
-    emit('handleCurrentChange', newPage)
+    emit('handleCurrentChange', newPage);
 };
 
 </script>
@@ -28,10 +32,10 @@ const handlePageChange = (newPage: number) => {
     border-bottom: 1px solid #666;
     padding: 6px;
     background-color: white;
+    box-sizing: border-box;
     display: flex;
+    flex-shrink: 0;
     justify-content: center;
-    position: fixed;
-    bottom: 0;
-    width: 88%;
+    width: 100%;
 }
 </style>

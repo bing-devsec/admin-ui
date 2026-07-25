@@ -1,59 +1,61 @@
 <template>
-    <div class="tabs-container">
-        <div class="button-container">
-            <el-button type="primary" @click="openAddDrawer">
-                <el-icon style="margin-right: 4px">
-                    <Plus />
-                </el-icon>
-                添加友链
-            </el-button>
-        </div>
-        <div class="table-container">
-            <el-table :data="paginatedLinkList" style="width: 100%" class="monospace-column">
-                <el-table-column label="序号" min-width="60" max-width="100">
-                    <template #default="scope">
-                        <span>{{ (currentPage - 1) * pageSize + scope.$index + 1 }}</span>
-                    </template>
-                </el-table-column>
-                <el-table-column label="名称" min-width="260" max-width="320" show-overflow-tooltip>
-                    <template #default="scope">
-                        <span>{{ scope.row.name }}</span>
-                    </template>
-                </el-table-column>
-                <el-table-column label="URL" min-width="260" max-width="320" show-overflow-tooltip>
-                    <template #default="scope">
-                        <span>{{ scope.row.url }}</span>
-                    </template>
-                </el-table-column>
-                <el-table-column label="操作" min-width="145" max-width="150">
-                    <template #default="scope">
-                        <div class="action-buttons">
-                            <el-button size="default" @click="handleEdit(scope.row)">编辑</el-button>
-                            <el-button size="default" type="danger"
-                                @click="open(scope.$index, scope.row)">删除</el-button>
-                        </div>
-                    </template>
-                </el-table-column>
-            </el-table>
-        </div>
-    </div>
-
-    <el-drawer v-model="drawer" :title="drawerTitle" :destroy-on-close="true" class="link-drawer">
-        <template #header>
-            <div class="drawer-header">
-                <el-icon class="drawer-header-icon">
-                    <component :is="isEdit ? Edit : Link" />
-                </el-icon>
-                <span class="drawer-header-title">{{ drawerTitle }}</span>
+    <div class="link-page">
+        <div class="tabs-container">
+            <div class="button-container">
+                <el-button type="primary" @click="openAddDrawer">
+                    <el-icon style="margin-right: 4px">
+                        <Plus />
+                    </el-icon>
+                    添加友链
+                </el-button>
             </div>
-        </template>
-        <updateLink :id="editingId" :name="editingName" :url="editingUrl"
-            @close="drawer = false" @refresh="fetchLinkList" />
-    </el-drawer>
+            <div class="table-container">
+                <el-table :data="paginatedLinkList" style="width: 100%" class="monospace-column">
+                    <el-table-column label="序号" min-width="60" max-width="100">
+                        <template #default="scope">
+                            <span>{{ (currentPage - 1) * pageSize + scope.$index + 1 }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="名称" min-width="260" max-width="320" show-overflow-tooltip>
+                        <template #default="scope">
+                            <span>{{ scope.row.name }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="URL" min-width="260" max-width="320" show-overflow-tooltip>
+                        <template #default="scope">
+                            <span>{{ scope.row.url }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作" min-width="145" max-width="150" fixed="right">
+                        <template #default="scope">
+                            <div class="action-buttons">
+                                <el-button size="default" @click="handleEdit(scope.row)">编辑</el-button>
+                                <el-button size="default" type="danger"
+                                    @click="open(scope.$index, scope.row)">删除</el-button>
+                            </div>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+        </div>
 
-    <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
-        @handleCurrentChange="handleCurrentChange">
-    </pagination>
+        <el-drawer v-model="drawer" :title="drawerTitle" :destroy-on-close="true" class="link-drawer">
+            <template #header>
+                <div class="drawer-header">
+                    <el-icon class="drawer-header-icon">
+                        <component :is="isEdit ? Edit : Link" />
+                    </el-icon>
+                    <span class="drawer-header-title">{{ drawerTitle }}</span>
+                </div>
+            </template>
+            <updateLink :id="editingId" :name="editingName" :url="editingUrl"
+                @close="drawer = false" @refresh="fetchLinkList" />
+        </el-drawer>
+
+        <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
+            @handleCurrentChange="handleCurrentChange">
+        </pagination>
+    </div>
 </template>
 
 <script lang="ts" setup>
@@ -201,16 +203,30 @@ const handleDelete = async (_index: number, row: LinkItem) => {
     font-family: monospace;
 }
 
-.tabs-container {
+.link-page {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
+}
+
+.tabs-container {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .table-container {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    margin-bottom: 46px;
+}
+
+.action-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
 }
 
 .button-container {

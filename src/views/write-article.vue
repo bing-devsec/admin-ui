@@ -25,7 +25,24 @@
                 <span class="toolbar-stat">{{ charCount }} 字 · {{ lineCount }} 行</span>
             </div>
             <div class="toolbar-right">
-                <el-dropdown trigger="click" @command="insertAdmonition">
+                <el-button @click="applyMarkdownFormat('bold')" link>加粗</el-button>
+                <el-dropdown trigger="hover" @command="applyMarkdownFormat">
+                    <el-button link>
+                        列表<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item
+                                v-for="preset in LIST_PRESETS"
+                                :key="preset.kind"
+                                :command="preset.kind"
+                            >
+                                {{ preset.label }}
+                            </el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
+                <el-dropdown trigger="hover" @command="insertAdmonition">
                     <el-button link>
                         提示块<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                     </el-button>
@@ -42,15 +59,31 @@
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
-                <el-button @click="insertSnippet('code')" link>代码块</el-button>
+                <el-dropdown trigger="hover" @command="insertCode">
+                    <el-button link>
+                        代码块<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item
+                                v-for="preset in CODE_PRESETS"
+                                :key="preset.kind"
+                                :command="preset.kind"
+                            >
+                                {{ preset.label }}
+                            </el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
                 <el-button @click="insertSnippet('table')" link>表格</el-button>
                 <el-button @click="insertSnippet('math')" link>公式</el-button>
                 <el-button @click="insertSnippet('mermaid')" link>Mermaid</el-button>
-                <el-divider direction="vertical" />
+                <el-divider class="toolbar-divider" direction="vertical" />
                 <el-button @click="formatContent" link>
-                    <el-icon style="margin-right: 4px;">
-                        <MagicStick />
-                    </el-icon>美化排版
+                    美化排版
+                </el-button>
+                <el-button @click="toggleCatalog" link :class="{ 'is-catalog-active': isCatalogVisible }">
+                    目录
                 </el-button>
                 <el-button type="primary" @click="saveArticle">
                     <el-icon style="margin-right: 4px;">
@@ -76,13 +109,41 @@
                 ></textarea>
             </div>
 
-            <div v-show="mode !== 'edit'" class="write-pane write-preview" ref="previewPane">
-                <ArticlePreview
-                    :markdown="displayContent"
-                    :device="device"
-                    :device-width="currentDevice.width"
-                    :device-height="currentDevice.height"
-                />
+            <div
+                v-show="mode !== 'edit'"
+                class="write-pane write-preview-shell"
+                :class="{ 'write-preview-shell--catalog': isCatalogVisible }"
+            >
+                <div ref="previewPane" class="write-preview-scroll" @scroll="handlePreviewScroll">
+                    <ArticlePreview
+                        :markdown="displayContent"
+                        :device="device"
+                        :device-width="currentDevice.width"
+                        :device-height="currentDevice.height"
+                        @rendered-html="handlePreviewRenderedHtml"
+                        @preview-scroll="handlePreviewScroll"
+                    />
+                </div>
+
+                <aside v-if="isCatalogVisible" class="preview-catalog" aria-label="文章目录">
+                    <div class="preview-catalog-title">目录</div>
+                    <nav v-if="catalogHeadings.length" class="ssr-catalog">
+                        <ul class="ssr-catalog-list">
+                            <li
+                                v-for="heading in catalogHeadings"
+                                :key="heading.id"
+                                :class="['ssr-catalog-item', `level-${heading.level}`, { active: heading.id === activeCatalogId }]"
+                            >
+                                <a :href="`#${heading.id}`" @click.prevent="scrollToCatalogHeading(heading.id)">
+                                    {{ heading.text }}
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                    <div v-else class="preview-catalog-empty">
+                        暂无目录，添加一级到三级标题后会自动生成。
+                    </div>
+                </aside>
             </div>
         </div>
 
@@ -104,13 +165,14 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { ElNotification } from 'element-plus';
-import { Promotion, MagicStick, Monitor, Iphone, Cellphone, ArrowDown } from '@element-plus/icons-vue';
+import { Promotion, Monitor, Iphone, Cellphone, ArrowDown } from '@element-plus/icons-vue';
 import SubmitArticle from '../components/submit-article.vue';
 import ArticlePreview from '../components/article-preview.vue';
 import emitter from '../utils/event-bus.js';
 import { beautifyMarkdown } from '../utils/format-text';
+import { extractHeadingsFromHtml, type CatalogHeading } from '../utils/markdown';
 import {
     DEFAULT_DEVICE_ID,
     DEFAULT_DEVICE_BY_CATEGORY,
@@ -150,6 +212,358 @@ const previewPane = ref<HTMLElement | null>(null);
 
 const charCount = computed(() => displayContent.value.length);
 const lineCount = computed(() => displayContent.value ? displayContent.value.split('\n').length : 0);
+
+// ============================================================
+// 预览目录：复用 portal-web 的 HTML heading 提取规则
+// ============================================================
+const isCatalogVisible = ref(false);
+const previewRenderedHtml = ref('');
+const activeCatalogId = ref('');
+const catalogHeadings = computed<CatalogHeading[]>(() => extractHeadingsFromHtml(previewRenderedHtml.value, 3));
+
+watch(
+    catalogHeadings,
+    (headings) => {
+        if (!headings.length) {
+            activeCatalogId.value = '';
+            return;
+        }
+        if (!headings.some((heading) => heading.id === activeCatalogId.value)) {
+            activeCatalogId.value = headings[0].id;
+        }
+    },
+    { immediate: true }
+);
+
+watch(device, () => {
+    if (!isCatalogVisible.value) return;
+    requestAnimationFrame(updateActiveCatalogId);
+});
+
+function handlePreviewRenderedHtml(html: string) {
+    previewRenderedHtml.value = html;
+    requestAnimationFrame(updateActiveCatalogId);
+}
+
+async function toggleCatalog() {
+    isCatalogVisible.value = !isCatalogVisible.value;
+    if (!isCatalogVisible.value) return;
+
+    if (mode.value === 'edit') {
+        mode.value = 'split';
+    }
+
+    await nextTick();
+    updateActiveCatalogId();
+    if (!catalogHeadings.value.length) {
+        ElNotification({
+            title: '暂无目录',
+            message: '添加 #、## 或 ### 标题后会自动生成文章目录',
+            type: 'info',
+            duration: 1800,
+        });
+    }
+}
+
+function escapeCssId(id: string): string {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+        return CSS.escape(id);
+    }
+    return id.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+}
+
+function getPreviewIframe(): HTMLIFrameElement | null {
+    return previewPane.value?.querySelector<HTMLIFrameElement>('.device-iframe') || null;
+}
+
+type ScrollTargetName = 'editor' | 'preview';
+type HeadingSourceAnchor = {
+    line: number;
+    level: number;
+    text: string;
+};
+
+const SCROLL_SYNC_OFFSET = 12;
+const USER_SYNC_LOCK_MS = 90;
+const CATALOG_SYNC_LOCK_MS = 720;
+let editorToPreviewRaf = 0;
+let previewToEditorRaf = 0;
+const programmaticScrollTargets = new Set<ScrollTargetName>();
+const programmaticScrollTimers: Partial<Record<ScrollTargetName, number>> = {};
+
+function markProgrammaticScroll(target: ScrollTargetName, duration = USER_SYNC_LOCK_MS) {
+    programmaticScrollTargets.add(target);
+    const existingTimer = programmaticScrollTimers[target];
+    if (existingTimer) {
+        window.clearTimeout(existingTimer);
+    }
+    programmaticScrollTimers[target] = window.setTimeout(() => {
+        programmaticScrollTargets.delete(target);
+        programmaticScrollTimers[target] = undefined;
+    }, duration);
+}
+
+function getScrollMax(el: HTMLElement): number {
+    return Math.max(0, el.scrollHeight - el.clientHeight);
+}
+
+function clampScrollTop(el: HTMLElement, top: number): number {
+    return Math.min(Math.max(0, top), getScrollMax(el));
+}
+
+function scrollElementTo(
+    el: HTMLElement,
+    top: number,
+    target: ScrollTargetName,
+    behavior: ScrollBehavior = 'auto',
+    lockDuration = USER_SYNC_LOCK_MS
+) {
+    markProgrammaticScroll(target, lockDuration);
+    el.scrollTo({
+        top: clampScrollTop(el, top),
+        behavior,
+    });
+}
+
+function getActivePreviewScroller(): HTMLElement | null {
+    if (device.value === 'pc') {
+        return previewPane.value;
+    }
+
+    const doc = getPreviewIframe()?.contentDocument;
+    return (doc?.scrollingElement as HTMLElement | null) || doc?.documentElement || previewPane.value;
+}
+
+function getEditorLineHeight(ta: HTMLTextAreaElement): number {
+    const lineHeight = Number.parseFloat(window.getComputedStyle(ta).lineHeight);
+    return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 24;
+}
+
+function normalizeHeadingText(text: string): string {
+    return text
+        .replace(/\\([\\`*_[\]{}()#+\-.!>])/g, '$1')
+        .replace(/[`*_~]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getMarkdownHeadingAnchors(): HeadingSourceAnchor[] {
+    const lines = displayContent.value.split('\n');
+    const anchors: HeadingSourceAnchor[] = [];
+    let inFence = false;
+    let fenceMarker = '';
+
+    lines.forEach((line, index) => {
+        const fenceMatch = line.match(/^\s*(```+|~~~+)/);
+        if (fenceMatch) {
+            const marker = fenceMatch[1][0];
+            if (!inFence) {
+                inFence = true;
+                fenceMarker = marker;
+            } else if (marker === fenceMarker) {
+                inFence = false;
+                fenceMarker = '';
+            }
+            return;
+        }
+        if (inFence) return;
+
+        const match = line.match(/^\s{0,3}(#{1,3})\s+(.+?)\s*#*\s*$/);
+        if (!match) return;
+        anchors.push({
+            line: index,
+            level: match[1].length,
+            text: normalizeHeadingText(match[2]),
+        });
+    });
+
+    return anchors;
+}
+
+function getMarkdownHeadingLineForCatalogId(id: string): number | null {
+    const catalogIndex = catalogHeadings.value.findIndex((heading) => heading.id === id);
+    const sourceAnchors = getMarkdownHeadingAnchors();
+    if (catalogIndex >= 0 && sourceAnchors[catalogIndex]) {
+        return sourceAnchors[catalogIndex].line;
+    }
+
+    const catalogHeading = catalogHeadings.value.find((heading) => heading.id === id);
+    if (!catalogHeading) return null;
+    const normalizedText = normalizeHeadingText(catalogHeading.text);
+    const fallback = sourceAnchors.find(
+        (heading) => heading.level === catalogHeading.level && heading.text === normalizedText
+    );
+    return fallback?.line ?? null;
+}
+
+function getPreviewHeadingTop(id: string, scroller = getActivePreviewScroller()): number | null {
+    if (!scroller) return null;
+
+    if (device.value === 'pc') {
+        const target = previewPane.value?.querySelector<HTMLElement>(`#${escapeCssId(id)}`);
+        if (!target) return null;
+
+        const scrollerRect = scroller.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        return scroller.scrollTop + (targetRect.top - scrollerRect.top) - SCROLL_SYNC_OFFSET;
+    }
+
+    const doc = getPreviewIframe()?.contentDocument;
+    const target = doc?.getElementById(id);
+    if (!target) return null;
+
+    return target.getBoundingClientRect().top + scroller.scrollTop - SCROLL_SYNC_OFFSET;
+}
+
+function getEditorHeadingTop(id: string): number | null {
+    const ta = editor.value;
+    if (!ta) return null;
+    const line = getMarkdownHeadingLineForCatalogId(id);
+    if (line === null) return null;
+    return line * getEditorLineHeight(ta);
+}
+
+function interpolateScrollTop(sourceTop: number, anchors: Array<{ source: number; target: number }>): number | null {
+    if (anchors.length < 2) return null;
+    const sortedAnchors = anchors
+        .filter((anchor) => Number.isFinite(anchor.source) && Number.isFinite(anchor.target))
+        .sort((a, b) => a.source - b.source);
+    if (sortedAnchors.length < 2) return null;
+
+    let previous = sortedAnchors[0];
+    for (let i = 1; i < sortedAnchors.length; i++) {
+        const next = sortedAnchors[i];
+        if (sourceTop <= next.source) {
+            const span = next.source - previous.source;
+            const progress = span <= 0 ? 0 : (sourceTop - previous.source) / span;
+            return previous.target + (next.target - previous.target) * Math.min(Math.max(progress, 0), 1);
+        }
+        previous = next;
+    }
+
+    return sortedAnchors[sortedAnchors.length - 1].target;
+}
+
+function mapScrollTopByCatalogAnchors(from: 'editor' | 'preview'): number | null {
+    const ta = editor.value;
+    const previewScroller = getActivePreviewScroller();
+    if (!ta || !previewScroller) return null;
+
+    const editorMax = getScrollMax(ta);
+    const previewMax = getScrollMax(previewScroller);
+    if (editorMax <= 0 || previewMax <= 0) return from === 'editor' ? 0 : null;
+
+    const sourceHeadings = getMarkdownHeadingAnchors();
+    const headings = catalogHeadings.value;
+    const pairs: Array<{ editorTop: number; previewTop: number }> = [
+        { editorTop: 0, previewTop: 0 },
+    ];
+
+    const count = Math.min(headings.length, sourceHeadings.length);
+    for (let i = 0; i < count; i++) {
+        const previewTop = getPreviewHeadingTop(headings[i].id, previewScroller);
+        if (previewTop === null) continue;
+        pairs.push({
+            editorTop: sourceHeadings[i].line * getEditorLineHeight(ta),
+            previewTop,
+        });
+    }
+    pairs.push({ editorTop: editorMax, previewTop: previewMax });
+
+    const sourceTop = from === 'editor' ? ta.scrollTop : previewScroller.scrollTop;
+    const anchors = pairs.map((pair) =>
+        from === 'editor'
+            ? { source: pair.editorTop, target: pair.previewTop }
+            : { source: pair.previewTop, target: pair.editorTop }
+    );
+
+    return interpolateScrollTop(sourceTop, anchors);
+}
+
+function mapScrollTopByRatio(from: 'editor' | 'preview'): number | null {
+    const ta = editor.value;
+    const previewScroller = getActivePreviewScroller();
+    if (!ta || !previewScroller) return null;
+
+    const editorMax = getScrollMax(ta);
+    const previewMax = getScrollMax(previewScroller);
+    if (from === 'editor') {
+        if (editorMax <= 0) return 0;
+        return previewMax * (ta.scrollTop / editorMax);
+    }
+    if (previewMax <= 0) return 0;
+    return editorMax * (previewScroller.scrollTop / previewMax);
+}
+
+async function scrollToCatalogHeading(id: string) {
+    activeCatalogId.value = id;
+    if (mode.value === 'edit') {
+        mode.value = 'split';
+    }
+
+    await nextTick();
+    requestAnimationFrame(() => {
+        const previewScroller = getActivePreviewScroller();
+        const previewTop = getPreviewHeadingTop(id, previewScroller);
+        if (previewScroller && previewTop !== null) {
+            scrollElementTo(previewScroller, previewTop, 'preview', 'smooth', CATALOG_SYNC_LOCK_MS);
+        }
+
+        const ta = editor.value;
+        const editorTop = getEditorHeadingTop(id);
+        if (ta && editorTop !== null) {
+            scrollElementTo(ta, editorTop, 'editor', 'smooth', CATALOG_SYNC_LOCK_MS);
+        }
+    });
+}
+
+function handlePreviewScroll() {
+    if (isCatalogVisible.value) {
+        updateActiveCatalogId();
+    }
+    if (mode.value !== 'split') return;
+    if (programmaticScrollTargets.has('preview')) return;
+    schedulePreviewToEditorSync();
+}
+
+function updateActiveCatalogId() {
+    const headings = catalogHeadings.value;
+    if (!headings.length) {
+        activeCatalogId.value = '';
+        return;
+    }
+
+    const pane = previewPane.value;
+    if (!pane) {
+        activeCatalogId.value = headings[0].id;
+        return;
+    }
+
+    let currentId = headings[0].id;
+    const threshold = 16;
+
+    if (device.value === 'pc') {
+        const paneTop = pane.getBoundingClientRect().top;
+        for (const heading of headings) {
+            const el = pane.querySelector<HTMLElement>(`#${escapeCssId(heading.id)}`);
+            if (!el) continue;
+            const top = el.getBoundingClientRect().top - paneTop;
+            if (top <= threshold) currentId = heading.id;
+            else break;
+        }
+    } else {
+        const doc = getPreviewIframe()?.contentDocument;
+        for (const heading of headings) {
+            const el = doc?.getElementById(heading.id);
+            if (!el) continue;
+            const top = el.getBoundingClientRect().top;
+            if (top <= threshold) currentId = heading.id;
+            else break;
+        }
+    }
+
+    activeCatalogId.value = currentId;
+}
 
 // ============================================================
 // 标题自动识别（保留原逻辑）
@@ -230,11 +644,21 @@ function handleKeydown(e: KeyboardEvent) {
 // 工具栏：常用片段插入
 // ============================================================
 const SNIPPETS: Record<string, string> = {
-    code: '```bash\nls\n```',
+    codeBlock: '```bash\nls\n```',
     table: '| 列 1 | 列 2 |\n| --- | --- |\n| A | B |',
     math: '$$\nE = mc^2\n$$',
     mermaid: '```mermaid\nflowchart LR\n    A[开始] --> B[结束]\n```',
 };
+
+const LIST_PRESETS: { kind: MarkdownFormat; label: string }[] = [
+    { kind: 'unordered-list', label: '无序列表' },
+    { kind: 'ordered-list', label: '有序列表' },
+];
+
+const CODE_PRESETS: { kind: CodeFormat; label: string }[] = [
+    { kind: 'inline-code', label: '单行代码' },
+    { kind: 'code-block', label: '多行代码' },
+];
 
 // 提示块类型：与 utils/markdown.ts 的 ADMONITION_TYPES / EMOJIS / 默认标题保持一致
 const ADMONITION_PRESETS: { kind: string; emoji: string; label: string; title: string }[] = [
@@ -248,6 +672,9 @@ const ADMONITION_PRESETS: { kind: string; emoji: string; label: string; title: s
     { kind: 'summary', emoji: '📌', label: '总结', title: '总结' },
 ];
 
+type MarkdownFormat = 'bold' | 'unordered-list' | 'ordered-list';
+type CodeFormat = 'inline-code' | 'code-block';
+
 function insertSnippet(key: string) {
     const snippet = SNIPPETS[key];
     if (!snippet) return;
@@ -258,6 +685,101 @@ function insertAdmonition(kind: string) {
     const preset = ADMONITION_PRESETS.find((p) => p.kind === kind);
     if (!preset) return;
     insertText(`!!! ${preset.kind} ${preset.title}\n这里写${preset.label}内容\n!!!\n`);
+}
+
+function insertCode(format: CodeFormat) {
+    if (format === 'code-block') {
+        insertSnippet('codeBlock');
+        return;
+    }
+    applyInlineCodeFormat();
+}
+
+function replaceSelection(insert: string, selectionStart?: number, selectionEnd?: number) {
+    const ta = editor.value;
+    if (!ta) {
+        displayContent.value = (displayContent.value ? displayContent.value + '\n' : '') + insert;
+        return;
+    }
+
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const nextSelectionStart = selectionStart ?? start + insert.length;
+    const nextSelectionEnd = selectionEnd ?? nextSelectionStart;
+
+    ta.focus();
+    ta.setSelectionRange(start, end);
+    let inserted = false;
+    try {
+        inserted = document.execCommand('insertText', false, insert);
+    } catch {
+        inserted = false;
+    }
+    if (!inserted) {
+        ta.setRangeText(insert, start, end, 'end');
+        displayContent.value = ta.value;
+    }
+
+    requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    });
+}
+
+function applyBoldFormat() {
+    const ta = editor.value;
+    if (!ta) {
+        displayContent.value = displayContent.value ? `**${displayContent.value}**` : '**加粗文本**';
+        return;
+    }
+
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = ta.value.slice(start, end);
+    const text = selected || '加粗文本';
+    replaceSelection(`**${text}**`, start + 2, start + 2 + text.length);
+}
+
+function applyInlineCodeFormat() {
+    const ta = editor.value;
+    if (!ta) {
+        displayContent.value = displayContent.value ? `\`${displayContent.value}\`` : '`code`';
+        return;
+    }
+
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = ta.value.slice(start, end);
+    const text = selected || 'code';
+    replaceSelection(`\`${text}\``, start + 1, start + 1 + text.length);
+}
+
+function applyListFormat(ordered: boolean) {
+    const ta = editor.value;
+    if (!ta) {
+        displayContent.value += ordered ? '1. 列表项' : '- 列表项';
+        return;
+    }
+
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = ta.value.slice(start, end);
+    const source = selected || '列表项';
+    const lines = source.split('\n');
+    const formatted = lines.map((line, index) => {
+        const text = line.replace(/^\s*(?:[-*+]\s+|\d+\.\s+)/, '');
+        return ordered ? `${index + 1}. ${text}` : `- ${text}`;
+    }).join('\n');
+
+    replaceSelection(formatted, start, start + formatted.length);
+}
+
+function applyMarkdownFormat(format: MarkdownFormat) {
+    if (format === 'bold') {
+        applyBoldFormat();
+        return;
+    }
+    applyListFormat(format === 'ordered-list');
 }
 
 function insertText(snippet: string) {
@@ -305,24 +827,44 @@ function insertText(snippet: string) {
 }
 
 // ============================================================
-// 编辑/预览滚动同步（按比例）
+// 编辑/预览滚动同步：标题锚点分段映射，缺少目录时回退到比例同步
 // ============================================================
-let syncing = false;
+function syncEditorToPreview() {
+    const previewScroller = getActivePreviewScroller();
+    if (!previewScroller) return;
+    const top = mapScrollTopByCatalogAnchors('editor') ?? mapScrollTopByRatio('editor');
+    if (top === null) return;
+    scrollElementTo(previewScroller, top, 'preview');
+}
+
+function syncPreviewToEditor() {
+    const ta = editor.value;
+    if (!ta) return;
+    const top = mapScrollTopByCatalogAnchors('preview') ?? mapScrollTopByRatio('preview');
+    if (top === null) return;
+    scrollElementTo(ta, top, 'editor');
+}
+
+function scheduleEditorToPreviewSync() {
+    if (editorToPreviewRaf) return;
+    editorToPreviewRaf = requestAnimationFrame(() => {
+        editorToPreviewRaf = 0;
+        syncEditorToPreview();
+    });
+}
+
+function schedulePreviewToEditorSync() {
+    if (previewToEditorRaf) return;
+    previewToEditorRaf = requestAnimationFrame(() => {
+        previewToEditorRaf = 0;
+        syncPreviewToEditor();
+    });
+}
+
 function handleEditorScroll() {
     if (mode.value !== 'split') return;
-    if (syncing) return;
-    const ta = editor.value;
-    const pane = previewPane.value;
-    if (!ta || !pane) return;
-    const taMax = ta.scrollHeight - ta.clientHeight;
-    if (taMax <= 0) return;
-    const ratio = ta.scrollTop / taMax;
-    const paneMax = pane.scrollHeight - pane.clientHeight;
-    syncing = true;
-    pane.scrollTop = paneMax * ratio;
-    requestAnimationFrame(() => {
-        syncing = false;
-    });
+    if (programmaticScrollTargets.has('editor')) return;
+    scheduleEditorToPreviewSync();
 }
 
 // ============================================================
@@ -379,6 +921,22 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     emitter.off('updateArticle', updateArticle);
+    if (editorToPreviewRaf) {
+        cancelAnimationFrame(editorToPreviewRaf);
+        editorToPreviewRaf = 0;
+    }
+    if (previewToEditorRaf) {
+        cancelAnimationFrame(previewToEditorRaf);
+        previewToEditorRaf = 0;
+    }
+    (Object.keys(programmaticScrollTimers) as ScrollTargetName[]).forEach((target) => {
+        const timer = programmaticScrollTimers[target];
+        if (timer) {
+            window.clearTimeout(timer);
+            programmaticScrollTimers[target] = undefined;
+        }
+    });
+    programmaticScrollTargets.clear();
 });
 </script>
 
@@ -427,7 +985,37 @@ onBeforeUnmount(() => {
 .toolbar-right {
     display: flex;
     align-items: center;
-    gap: 6px;
+    column-gap: 12px;
+    row-gap: 8px;
+    flex-wrap: wrap;
+}
+
+.toolbar-right :deep(.el-button) {
+    margin-left: 0;
+}
+
+.toolbar-right :deep(.el-dropdown) {
+    display: inline-flex;
+}
+
+.toolbar-right :deep(.el-button.is-link:hover),
+.toolbar-right :deep(.el-button.is-link:focus),
+.toolbar-right :deep(.el-button.is-link:focus-visible),
+.toolbar-right :deep(.el-tooltip__trigger:focus-visible) {
+    border-color: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
+.toolbar-right :deep(.el-button.is-link.is-catalog-active) {
+    color: var(--el-color-primary);
+    font-weight: 600;
+}
+
+.toolbar-divider {
+    border-left-color: #cdd0d6;
+    height: 20px;
+    margin: 0;
 }
 
 .admonition-menu-emoji {
@@ -451,6 +1039,8 @@ onBeforeUnmount(() => {
 /* 编辑区 / 预览区滚动条样式：细滚动条，hover 不放大 */
 /* ============================================================ */
 .write-pane,
+.write-preview-scroll,
+.preview-catalog,
 .md-textarea {
     /* Firefox */
     scrollbar-width: thin;
@@ -458,17 +1048,23 @@ onBeforeUnmount(() => {
 }
 
 .write-pane::-webkit-scrollbar,
+.write-preview-scroll::-webkit-scrollbar,
+.preview-catalog::-webkit-scrollbar,
 .md-textarea::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 
 .write-pane::-webkit-scrollbar-track,
+.write-preview-scroll::-webkit-scrollbar-track,
+.preview-catalog::-webkit-scrollbar-track,
 .md-textarea::-webkit-scrollbar-track {
     background: transparent;
 }
 
 .write-pane::-webkit-scrollbar-thumb,
+.write-preview-scroll::-webkit-scrollbar-thumb,
+.preview-catalog::-webkit-scrollbar-thumb,
 .md-textarea::-webkit-scrollbar-thumb {
     background: #c0c4cc;
     border-radius: 3px;
@@ -477,13 +1073,19 @@ onBeforeUnmount(() => {
 }
 
 .write-pane::-webkit-scrollbar-thumb:hover,
+.write-preview-scroll::-webkit-scrollbar-thumb:hover,
+.preview-catalog::-webkit-scrollbar-thumb:hover,
 .md-textarea::-webkit-scrollbar-thumb:hover,
 .write-pane::-webkit-scrollbar-thumb:active,
+.write-preview-scroll::-webkit-scrollbar-thumb:active,
+.preview-catalog::-webkit-scrollbar-thumb:active,
 .md-textarea::-webkit-scrollbar-thumb:active {
     background: #c0c4cc;
 }
 
 .write-pane::-webkit-scrollbar-corner,
+.write-preview-scroll::-webkit-scrollbar-corner,
+.preview-catalog::-webkit-scrollbar-corner,
 .md-textarea::-webkit-scrollbar-corner {
     background: transparent;
 }
@@ -492,7 +1094,7 @@ onBeforeUnmount(() => {
     flex: 1;
 }
 
-.write-body[data-mode='preview'] .write-preview {
+.write-body[data-mode='preview'] .write-preview-shell {
     flex: 1;
 }
 
@@ -521,8 +1123,105 @@ onBeforeUnmount(() => {
     box-sizing: border-box;
 }
 
-.write-preview {
+.write-preview-shell {
     background: #fff;
+    display: flex;
+    overflow: hidden;
+}
+
+.write-preview-scroll {
+    background: #fff;
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+}
+
+.preview-catalog {
+    background: #fbfdff;
+    border-left: 1px solid #e4e7ed;
+    box-sizing: border-box;
+    flex: 0 0 220px;
+    overflow-y: auto;
+    padding: 14px 12px;
+}
+
+.preview-catalog-title {
+    border-bottom: 1px solid #edf2f7;
+    color: #303133;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+}
+
+.preview-catalog-empty {
+    color: #909399;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.ssr-catalog {
+    font-size: clamp(14px, 13px + 0.2vw, 15px);
+    line-height: 1.6;
+}
+
+.ssr-catalog-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.ssr-catalog-item {
+    border-left: 2px solid transparent;
+    margin: 4px 0;
+    padding: 2px 6px;
+    transition:
+        color 0.15s ease,
+        background-color 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.ssr-catalog-item a {
+    color: #555;
+    display: block;
+    line-height: 1.4;
+    text-decoration: none;
+    word-break: break-word;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .ssr-catalog-item:hover a {
+        color: #4dd0e1;
+    }
+}
+
+.ssr-catalog-item.active {
+    background-color: #f0fbfc;
+    border-left-color: #4dd0e1;
+}
+
+.ssr-catalog-item.active a {
+    color: #4dd0e1;
+    font-weight: 600;
+}
+
+.ssr-catalog-item.level-1 {
+    font-weight: 600;
+}
+
+.ssr-catalog-item.level-2 {
+    padding-left: 10px;
+}
+
+.ssr-catalog-item.level-3 {
+    font-size: clamp(13px, 12px + 0.2vw, 14px);
+    padding-left: 22px;
+}
+
+@media (max-width: 1100px) {
+    .preview-catalog {
+        flex-basis: 180px;
+    }
 }
 
 /* 抽屉样式（保留原版） */

@@ -52,6 +52,11 @@ const props = withDefaults(
     }
 );
 
+const emit = defineEmits<{
+    (event: 'rendered-html', html: string): void;
+    (event: 'preview-scroll'): void;
+}>();
+
 const root = ref<HTMLElement | null>(null);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const wrapRef = ref<HTMLElement | null>(null);
@@ -114,6 +119,7 @@ async function runRender(src: string) {
     const result = await renderMarkdownToHtml(src);
     if (myToken !== renderToken) return;
     html.value = result;
+    emit('rendered-html', result);
     await nextTick();
     if (props.device === 'pc') {
         void renderMermaidBlocks(root.value);
@@ -991,6 +997,21 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
 // ============================================================
 let unbindOuterFullscreen: (() => void) | null = null;
 let unbindInnerFullscreen: (() => void) | null = null;
+let unbindIframeScroll: (() => void) | null = null;
+
+function bindIframeScroll(doc: Document) {
+    unbindIframeScroll?.();
+    const win = doc.defaultView;
+    if (!win) return;
+
+    const handler = () => {
+        emit('preview-scroll');
+    };
+    win.addEventListener('scroll', handler, { passive: true });
+    unbindIframeScroll = () => {
+        win.removeEventListener('scroll', handler);
+    };
+}
 
 // ============================================================
 // iframe 加载完成后：在 iframe 内绑定事件 + 渲染 mermaid
@@ -1009,6 +1030,7 @@ function handleIframeLoad() {
     // 仅移动模式下才需要表格 overflow 检测；此时 iframe contentDocument 重建，
     // 在 iframe 内监听 .ssr-table-scroll 即可。
     observeTableOverflow(doc);
+    bindIframeScroll(doc);
 }
 
 // ============================================================
@@ -1104,6 +1126,8 @@ watch(
         closeMermaidFullscreen();
         unbindInnerFullscreen?.();
         unbindInnerFullscreen = null;
+        unbindIframeScroll?.();
+        unbindIframeScroll = null;
         disposeTableOverflowObserver();
     }
 );
@@ -1122,6 +1146,8 @@ onBeforeUnmount(() => {
     unbindOuterFullscreen = null;
     unbindInnerFullscreen?.();
     unbindInnerFullscreen = null;
+    unbindIframeScroll?.();
+    unbindIframeScroll = null;
     // 关闭可能仍存在的全屏蒙层
     closeCodeFullscreen();
     closeTableFullscreen();

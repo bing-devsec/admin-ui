@@ -1,25 +1,27 @@
 <template>
-    <el-tabs v-model="activeTag" class="demo-tabs" @tab-change="handleTabClick">
-        <div class="tabs-container">
-            <div class="button-container">
-                <el-button type="primary" @click="openDialog" :disabled="!selectedID.length">修改标签</el-button>
+    <div class="tag-page">
+        <el-tabs v-model="activeTag" class="demo-tabs" @tab-change="handleTabClick">
+            <div class="tabs-container">
+                <div class="button-container">
+                    <el-button type="primary" @click="openDialog" :disabled="!selectedID.length">修改标签</el-button>
+                </div>
+
+                <!-- 表格容器 -->
+                <div class="table-container">
+                    <el-tab-pane v-if="isReady" v-for="tag in tags" :key="tag" :label="tag" :name="tag">
+                        <tagArticleList :data="articleList" :currentPage="currentPage" :pageSize="pageSize"
+                            @selection-change="handleSelectionChange" @refresh="fetchArticleList"></tagArticleList>
+                    </el-tab-pane>
+                </div>
             </div>
 
-            <!-- 表格容器 -->
-            <div class="table-container">
-                <el-tab-pane v-if="isReady" v-for="tag in tags" :key="tag" :label="tag" :name="tag">
-                    <tagArticleList :data="articleList" :currentPage="currentPage" :pageSize="pageSize"
-                        @selection-change="handleSelectionChange" @refresh="fetchArticleList"></tagArticleList>
-                </el-tab-pane>
-            </div>
-        </div>
-
-        <updateTag v-if="dialogVisible" :visible="dialogVisible" @update:visible="dialogVisible = $event"
-            :selectedID="selectedID" :currentTag="activeTag" @update:refresh="handleTagRefresh"></updateTag>
+            <updateTag v-if="dialogVisible" :visible="dialogVisible" @update:visible="dialogVisible = $event"
+                :selectedID="selectedID" :currentTag="activeTag" @update:refresh="handleTagRefresh"></updateTag>
+        </el-tabs>
 
         <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
             @handleCurrentChange="handleCurrentChange"></pagination>
-    </el-tabs>
+    </div>
 </template>
 
 <script lang="ts" setup>
@@ -164,16 +166,39 @@ const handleTagRefresh = async () => {
 </script>
 
 <style scoped>
-.tabs-container {
+.tag-page {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
+}
+
+.demo-tabs {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.demo-tabs :deep(.el-tabs__content) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.tabs-container {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .table-container {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    margin-bottom: 46px;
 }
 
 .button-container {

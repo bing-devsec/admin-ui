@@ -22,17 +22,17 @@
                 <span>{{ scope.row.viewNum }}</span>
             </template>
         </el-table-column>
-        <el-table-column label="发布时间" min-width="145" max-width="150" show-overflow-tooltip >
+        <el-table-column label="发布时间" min-width="170" max-width="190" show-overflow-tooltip >
             <template #default="scope">
                 <span>{{ scope.row.createTime }}</span>
             </template>
         </el-table-column>
-        <el-table-column label="更新时间" min-width="145" max-width="150" show-overflow-tooltip>
+        <el-table-column label="更新时间" min-width="170" max-width="190" show-overflow-tooltip>
             <template #default="scope">
                 <span>{{ scope.row.updateTime }}</span>
             </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="145" max-width="150">
+        <el-table-column label="操作" min-width="145" max-width="150" fixed="right">
             <template #default="scope">
                 <div class="action-buttons">
                     <el-button size="default"
@@ -164,10 +164,10 @@ const open = (index: number, row: Article) => {
     });
 };
 
-async function handleDelete(index: number, row: Article) {
+async function handleDelete(_index: number, row: Article) {
     try {
         const response = await _axios.delete(`/admin/auth/article/delete`, {
-            params: { id: row.id },
+            data: { id: row.id },
         });
         const { code, message } = response.data;
         if (code === 2000 && message === "") {
@@ -180,14 +180,14 @@ async function handleDelete(index: number, row: Article) {
         } else {
             ElNotification({
                 title: "Failed",
-                message: "删除文章成功",
-                type: "success",
+                message: message || "删除文章失败",
+                type: "error",
             });
         }
-    } catch (error) {
+    } catch (error: any) {
         ElNotification({
             title: "Error",
-            message: error,
+            message: error?.message ?? String(error),
             type: "error",
         });
     }
