@@ -11,7 +11,7 @@
 							<el-tab-pane name="password-login">
 								<template #label><span>账号登录</span></template>
 								<!-- 默认显示用户名和密码输入框 -->
-								<div v-if="!show2FA">
+								<div v-if="!show2FA" class="credential-fields">
 									<el-input v-model="username" clearable type="text" size="large"
 										:disabled="passwordLoginCooldown > 0" placeholder="账号"></el-input>
 									<el-input v-model="password" clearable type="password" size="large"
@@ -744,5 +744,90 @@ watch(activeTab, () => {
 
 .code-boxes input:focus {
 	border-color: #409eff;
+}
+
+@media (max-width: 600px) {
+	.content {
+		box-sizing: border-box;
+		width: calc(100vw - 32px);
+		height: auto;
+		max-height: calc(100vh - 32px);
+		max-height: calc(100dvh - 32px);
+		padding: 28px 0;
+		animation: none;
+		overflow-y: auto;
+		transition: none;
+	}
+
+	.content_input {
+		position: relative;
+		top: auto;
+		left: auto;
+		width: calc(100% - 40px);
+		margin: 0 auto;
+		transform: none;
+	}
+
+	.container {
+		margin-bottom: 16px;
+		overflow: visible;
+	}
+
+	.credential-fields {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		margin: 14px 0 6px;
+	}
+
+	.credential-fields .el-input {
+		margin: 0;
+	}
+
+	.credential-fields :deep(.el-input__wrapper) {
+		min-height: 46px;
+		padding: 0 12px;
+	}
+
+	.credential-fields :deep(.el-input__inner) {
+		font-size: 16px;
+	}
+
+	.button {
+		margin-top: 24px;
+	}
+
+	.button :deep(.el-button) {
+		min-height: 44px;
+	}
+
+	.dynamic-code-input {
+		margin-top: 18px;
+	}
+
+	.dynamic-code-input p {
+		margin: 0 0 22px;
+		font-size: 18px;
+		line-height: 1.4;
+	}
+
+	.code-boxes {
+		display: grid;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		gap: clamp(6px, 2vw, 8px);
+		width: 100%;
+		margin: 0 auto 24px;
+	}
+
+	.code-boxes input {
+		box-sizing: border-box;
+		width: 100%;
+		height: auto;
+		aspect-ratio: 1;
+		min-width: 0;
+		padding: 0;
+		font-size: clamp(18px, 5vw, 22px);
+		border-radius: 6px;
+	}
 }
 </style>

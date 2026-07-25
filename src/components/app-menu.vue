@@ -57,7 +57,7 @@
 
 			<el-menu-item index="/home/about-me">
 				<el-icon>
-					<Avatar />
+					<Postcard />
 				</el-icon>
 				<span>关于我</span>
 			</el-menu-item>
@@ -86,7 +86,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ArrowLeft, ArrowRight, Avatar, Back, Comment, Document, DocumentAdd, Link, Management, User } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, Back, Comment, Document, DocumentAdd, Link, Management, Postcard, User } from "@element-plus/icons-vue";
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 

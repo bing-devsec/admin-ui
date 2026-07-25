@@ -11,7 +11,7 @@
                 <el-radio-group v-show="mode !== 'edit'" v-model="device" size="default" class="device-switch">
                     <el-radio-button value="pc">
                         <el-icon><Monitor /></el-icon>
-                        <span class="device-label">PC</span>
+                        <span class="device-label">电脑</span>
                     </el-radio-button>
                     <el-radio-button value="tablet">
                         <el-icon><Cellphone /></el-icon>
