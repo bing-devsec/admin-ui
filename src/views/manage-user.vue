@@ -28,7 +28,7 @@
         </div>
 
         <div class="table-container">
-            <el-table v-loading="loading" :data="userList" style="width: 100%" class="monospace-column">
+            <el-table scrollbar-always-on v-loading="loading" :data="userList" style="width: 100%" class="monospace-column">
                 <el-table-column label="序号" min-width="70" max-width="90">
                     <template #default="scope">
                         <span>{{ (currentPage - 1) * pageSize + scope.$index + 1 }}</span>
@@ -75,19 +75,21 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column label="操作" min-width="260" max-width="300" fixed="right">
+                <el-table-column label="操作" min-width="150" max-width="170" fixed="right">
                     <template #default="scope">
-                        <div class="action-buttons">
+                        <div class="action-buttons action-buttons--compact">
                             <el-button size="default" type="primary" plain @click="openDetail(scope.row)">详情</el-button>
-                            <el-button
-                                v-if="scope.row.commentDisabled"
-                                size="default"
-                                type="success"
-                                @click="enableComment(scope.row)">
-                                解除限制
-                            </el-button>
-                            <el-button v-else size="default" type="warning" @click="openDisableDialog(scope.row)">禁止评论</el-button>
-                            <el-button size="default" type="danger" plain @click="forceLogout(scope.row)">强制下线</el-button>
+                            <el-dropdown trigger="click" @command="(command) => handleUserAction(command, scope.row)">
+                                <el-button size="default" class="action-more-button">更多</el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item :command="scope.row.commentDisabled ? 'enable-comment' : 'disable-comment'">
+                                            {{ scope.row.commentDisabled ? '解除限制' : '禁止评论' }}
+                                        </el-dropdown-item>
+                                        <el-dropdown-item command="force-logout">强制下线</el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
                         </div>
                     </template>
                 </el-table-column>
@@ -441,6 +443,20 @@ const forceLogout = (row: UserItem) => {
         .catch(() => {});
 };
 
+const handleUserAction = (command: string | number | object, row: UserItem) => {
+    if (command === 'enable-comment') {
+        void enableComment(row);
+        return;
+    }
+    if (command === 'disable-comment') {
+        openDisableDialog(row);
+        return;
+    }
+    if (command === 'force-logout') {
+        forceLogout(row);
+    }
+};
+
 onMounted(fetchUserList);
 </script>
 
@@ -453,13 +469,23 @@ onMounted(fetchUserList);
 }
 
 .filter-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
     align-items: center;
-    padding: 8px 15px;
-    border-bottom: 1px solid #e4e7ed;
     background: #fff;
+    border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 var(--admin-header-height, 48px);
+    gap: 10px;
+    height: var(--admin-header-height, 48px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 15px;
+    scrollbar-width: thin;
+    flex-wrap: nowrap;
+}
+
+.filter-bar > * {
+    flex: 0 0 auto;
 }
 
 .handle-filter {

@@ -307,14 +307,20 @@ async function onSubmit() {
 }
 
 .about-header {
-    display: flex;
-    flex: none;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 8px 15px;
-    border-bottom: 1px solid #dceafe;
     background: linear-gradient(90deg, #f8fbff 0%, #fff 44%, #f7fbff 100%);
+    border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 var(--admin-header-height, 48px);
+    gap: 16px;
+    height: var(--admin-header-height, 48px);
+    justify-content: space-between;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 15px;
+    scrollbar-width: thin;
+    white-space: nowrap;
 }
 
 .header-title {
@@ -538,8 +544,8 @@ async function onSubmit() {
 
 @media (max-width: 640px) {
     .about-header {
-        align-items: flex-start;
-        flex-direction: column;
+        align-items: center;
+        flex-direction: row;
     }
 
     .header-actions {

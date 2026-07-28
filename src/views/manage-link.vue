@@ -10,7 +10,7 @@
                 </el-button>
             </div>
             <div class="table-container">
-                <el-table :data="paginatedLinkList" style="width: 100%" class="monospace-column">
+                <el-table scrollbar-always-on :data="paginatedLinkList" style="width: 100%" class="monospace-column">
                     <el-table-column label="序号" min-width="60" max-width="100">
                         <template #default="scope">
                             <span>{{ (currentPage - 1) * pageSize + scope.$index + 1 }}</span>
@@ -230,17 +230,19 @@ const handleDelete = async (_index: number, row: LinkItem) => {
 }
 
 .button-container {
-    margin-top: 9px;
-    margin-bottom: 9px;
-    margin-left: 15px;
-}
-
-.el-tabs__nav-scroll {
-    --el-tabs-header-height: 50px;
-}
-
-.el-tabs__item {
-    padding: 24px 20px !important;
+    align-items: center;
+    background: #fff;
+    border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 var(--admin-header-height, 48px);
+    height: var(--admin-header-height, 48px);
+    margin: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 15px;
+    scrollbar-width: thin;
+    white-space: nowrap;
 }
 
 .drawer-header {

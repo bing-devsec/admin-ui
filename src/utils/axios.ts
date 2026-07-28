@@ -21,6 +21,7 @@ const config: AxiosRequestConfig = {
 };
 
 const _axios: AxiosInstance = axios.create(config);
+const refreshAxios: AxiosInstance = axios.create(config);
 
 // clearAuth 清理前端登录标记（token 为 HttpOnly Cookie，由后端登出接口清除）
 function clearAuth(): void {
@@ -36,7 +37,7 @@ function refreshAccessToken(): Promise<boolean> {
 
     refreshPromise = (async () => {
         try {
-            const response = await _axios.post<ApiResponse>('/admin/refresh-token');
+            const response = await refreshAxios.post<ApiResponse>('/admin/refresh-token');
             const { code, message } = response.data;
             return code === 2000 && message === '';
         } catch {

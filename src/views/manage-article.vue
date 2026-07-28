@@ -3,28 +3,12 @@
 		<div class="tabs-container">
 			<el-tabs type="border-card" v-model="activeTab" class="demo-tabs">
 				<el-tab-pane name="按发布时间" label="按发布时间">
-					<template #label>
-						<span class="custom-tabs-label">
-							<el-icon>
-								<Calendar />
-							</el-icon>
-							<span>按发布时间</span>
-						</span>
-					</template>
 					<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"
 						@refreshData="refreshCurrentPageData">
 					</articleManageTab>
 				</el-tab-pane>
 
 				<el-tab-pane name="按浏览量" label="按浏览量">
-					<template #label>
-						<span class="custom-tabs-label">
-							<el-icon>
-								<View />
-							</el-icon>
-							<span>按浏览量</span>
-						</span>
-					</template>
 					<articleManageTab :data="tabData" :currentPage="currentPage" :pageSize="pageSize"
 						@refreshData="refreshCurrentPageData"></articleManageTab>
 				</el-tab-pane>
@@ -42,7 +26,6 @@ import { ref, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import articleManageTab from "../components/article-manage-tab.vue";
 import pagination from "../components/pagination.vue";
-import { Calendar, View } from "@element-plus/icons-vue";
 import { ElNotification } from "element-plus";
 import _axios from "../utils/axios";
 
@@ -172,9 +155,45 @@ onMounted(async () => {
 }
 
 .demo-tabs {
+	--el-tabs-header-height: var(--admin-header-height, 48px);
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+}
+
+.demo-tabs :deep(.el-tabs__header) {
+	box-sizing: border-box;
+	flex: 0 0 var(--admin-header-height, 48px);
+	height: var(--admin-header-height, 48px);
+	margin: 0;
+}
+
+.demo-tabs :deep(.el-tabs__nav),
+.demo-tabs :deep(.el-tabs__nav-scroll),
+.demo-tabs :deep(.el-tabs__nav-wrap) {
+	height: 100%;
+}
+
+.demo-tabs :deep(.el-tabs__item) {
+	height: var(--admin-header-height, 48px);
+	line-height: var(--admin-header-height, 48px);
+}
+
+.demo-tabs :deep(.el-tabs__item.is-active) {
+	border-bottom-color: var(--el-bg-color-overlay);
+	position: relative;
+	z-index: 2;
+}
+
+.demo-tabs :deep(.el-tabs__item.is-active::after) {
+	background: var(--el-bg-color-overlay);
+	bottom: -1px;
+	content: "";
+	height: 1px;
+	left: 0;
+	pointer-events: none;
+	position: absolute;
+	right: 0;
 }
 
 .demo-tabs :deep(.el-tabs__content) {
@@ -186,11 +205,4 @@ onMounted(async () => {
 	overflow-y: auto;
 }
 
-.demo-tabs .custom-tabs-label .el-icon {
-	vertical-align: middle;
-}
-
-.demo-tabs .custom-tabs-label span {
-	margin-left: 5px;
-}
 </style>

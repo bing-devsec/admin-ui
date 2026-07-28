@@ -1,5 +1,5 @@
 <template>
-    <el-table :data="data" style="width: 100%" class="monospace-column">
+    <el-table scrollbar-always-on :data="data" style="width: 100%" class="monospace-column">
         <el-table-column label="序号" min-width="60" max-width="100">
             <template #default="scope">
                 <div style="display: flex; align-items: center">

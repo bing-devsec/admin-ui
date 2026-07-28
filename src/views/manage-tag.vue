@@ -1,23 +1,26 @@
 <template>
     <div class="tag-page">
-        <el-tabs v-model="activeTag" class="demo-tabs" @tab-change="handleTabClick">
-            <div class="tabs-container">
-                <div class="button-container">
-                    <el-button type="primary" @click="openDialog" :disabled="!selectedID.length">修改标签</el-button>
-                </div>
-
-                <!-- 表格容器 -->
-                <div class="table-container">
-                    <el-tab-pane v-if="isReady" v-for="tag in tags" :key="tag" :label="tag" :name="tag">
-                        <tagArticleList :data="articleList" :currentPage="currentPage" :pageSize="pageSize"
-                            @selection-change="handleSelectionChange" @refresh="fetchArticleList"></tagArticleList>
-                    </el-tab-pane>
-                </div>
+        <div class="tag-page-header">
+            <el-tabs v-model="activeTag" class="tag-header-tabs" @tab-change="handleTabClick">
+                <template v-if="isReady">
+                    <el-tab-pane v-for="tag in tags" :key="tag" :label="tag" :name="tag" />
+                </template>
+            </el-tabs>
+            <div class="tag-header-actions">
+                <el-button type="primary" @click="openDialog" :disabled="!selectedID.length">修改标签</el-button>
             </div>
+        </div>
 
-            <updateTag v-if="dialogVisible" :visible="dialogVisible" @update:visible="dialogVisible = $event"
-                :selectedID="selectedID" :currentTag="activeTag" @update:refresh="handleTagRefresh"></updateTag>
-        </el-tabs>
+        <div class="tabs-container">
+            <!-- 表格容器 -->
+            <div class="table-container">
+                <tagArticleList :data="articleList" :currentPage="currentPage" :pageSize="pageSize"
+                    @selection-change="handleSelectionChange" @refresh="fetchArticleList"></tagArticleList>
+            </div>
+        </div>
+
+        <updateTag v-if="dialogVisible" :visible="dialogVisible" @update:visible="dialogVisible = $event"
+            :selectedID="selectedID" :currentTag="activeTag" @update:refresh="handleTagRefresh"></updateTag>
 
         <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize"
             @handleCurrentChange="handleCurrentChange"></pagination>
@@ -173,21 +176,6 @@ const handleTagRefresh = async () => {
     min-height: 0;
 }
 
-.demo-tabs {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-}
-
-.demo-tabs :deep(.el-tabs__content) {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-}
-
 .tabs-container {
     display: flex;
     flex: 1;
@@ -201,20 +189,74 @@ const handleTagRefresh = async () => {
     overflow-y: auto;
 }
 
-.button-container {
-    margin-bottom: 15px;
-    margin-left: 15px;
+.tag-page-header {
+    align-items: center;
+    background: #fff;
+    border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 var(--admin-header-height, 48px);
+    height: var(--admin-header-height, 48px);
+    min-width: 0;
 }
 
-.el-tabs {
-    --el-tabs-header-height: 50px;
+.tag-header-tabs {
+    --el-tabs-header-height: var(--admin-header-height, 48px);
+    flex: 1;
+    min-width: 0;
 }
 
-:deep(.el-tabs__nav) {
-    margin: 0 15px;
+:deep(.tag-header-tabs .el-tabs__header) {
+    box-sizing: border-box;
+    height: var(--admin-header-height, 48px);
+    margin: 0;
 }
 
-.el-tabs__item {
+:deep(.tag-header-tabs .el-tabs__content) {
+    display: none;
+}
+
+:deep(.tag-header-tabs .el-tabs__nav-wrap) {
+    height: 100%;
+    padding-left: 15px;
+}
+
+:deep(.tag-header-tabs .el-tabs__nav-wrap::after) {
+    display: none;
+}
+
+:deep(.tag-header-tabs .el-tabs__nav-scroll) {
+    height: 100%;
+    overflow: hidden;
+}
+
+:deep(.tag-header-tabs .el-tabs__nav) {
+    height: 100%;
+}
+
+:deep(.tag-header-tabs .el-tabs__nav-prev),
+:deep(.tag-header-tabs .el-tabs__nav-next) {
+    align-items: center;
+    box-sizing: border-box;
+    display: flex;
+    height: var(--admin-header-height, 48px);
+    justify-content: center;
+    line-height: 1;
+    top: 0;
+    width: 20px;
+}
+
+:deep(.tag-header-tabs .el-tabs__item) {
     padding: 0 24px;
+}
+
+.tag-header-actions {
+    align-items: center;
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 auto;
+    height: var(--admin-header-height, 48px);
+    padding: 0 15px 0 12px;
+    white-space: nowrap;
 }
 </style>

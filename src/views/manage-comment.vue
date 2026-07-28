@@ -65,7 +65,7 @@
         </div>
 
         <div class="table-container">
-            <el-table v-loading="loading" :data="commentList" style="width: 100%" class="monospace-column" @selection-change="handleSelectionChange">
+            <el-table scrollbar-always-on v-loading="loading" :data="commentList" style="width: 100%" class="monospace-column" @selection-change="handleSelectionChange">
                 <el-table-column type="selection" width="50" />
 
                 <el-table-column label="序号" min-width="60" max-width="100">
@@ -110,17 +110,20 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column label="操作" min-width="260" max-width="300" fixed="right">
+                <el-table-column label="操作" min-width="150" max-width="170" fixed="right">
                     <template #default="scope">
-                        <div class="action-buttons">
+                        <div class="action-buttons action-buttons--compact">
                             <el-button size="default" type="primary" plain @click="openDetail(scope.row)">详情</el-button>
-                            <el-button size="default" type="success" :disabled="scope.row.status === 'approved'" @click="updateStatus(scope.row, 'approved')">
-                                通过
-                            </el-button>
-                            <el-button size="default" type="warning" :disabled="scope.row.status === 'rejected'" @click="updateStatus(scope.row, 'rejected')">
-                                拒绝
-                            </el-button>
-                            <el-button size="default" type="danger" @click="confirmDelete(scope.row)">删除</el-button>
+                            <el-dropdown trigger="click" @command="(command) => handleCommentAction(command, scope.row)">
+                                <el-button size="default" class="action-more-button">更多</el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item command="approve" :disabled="scope.row.status === 'approved'">通过</el-dropdown-item>
+                                        <el-dropdown-item command="reject" :disabled="scope.row.status === 'rejected'">拒绝</el-dropdown-item>
+                                        <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
                         </div>
                     </template>
                 </el-table-column>
@@ -451,6 +454,20 @@ const updateStatus = async (row: CommentItem, status: CommentStatus) => {
     }
 };
 
+const handleCommentAction = (command: string | number | object, row: CommentItem) => {
+    if (command === 'approve') {
+        void updateStatus(row, 'approved');
+        return;
+    }
+    if (command === 'reject') {
+        void updateStatus(row, 'rejected');
+        return;
+    }
+    if (command === 'delete') {
+        confirmDelete(row);
+    }
+};
+
 const confirmDelete = (row: CommentItem) => {
     ElMessageBox.alert('确定删除这条评论吗？删除后不可恢复。', '删除评论', {
         showCancelButton: true,
@@ -536,13 +553,23 @@ onMounted(fetchCommentList);
 }
 
 .filter-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
     align-items: center;
-    padding: 8px 15px;
     background: #fff;
-    border-bottom: 1px solid #e4e7ed;
+    border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 var(--admin-header-height, 48px);
+    gap: 10px;
+    height: var(--admin-header-height, 48px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 15px;
+    scrollbar-width: thin;
+    flex-wrap: nowrap;
+}
+
+.filter-bar > * {
+    flex: 0 0 auto;
 }
 
 .status-select {

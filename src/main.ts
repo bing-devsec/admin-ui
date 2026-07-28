@@ -10,6 +10,7 @@ import './assets/base.css';
 import 'element-plus/dist/index.css';
 import 'katex/dist/katex.min.css';
 import './assets/article.css';
+import './assets/admin-responsive.css';
 
 import _axios from './utils/axios';
 

@@ -115,7 +115,7 @@ watch(() => router.currentRoute.value.path, newPath => {
 	--menu-active-color: #ffd04b;
 	--menu-bg-color: #545c64;
 	--menu-divider-color: #cdd0d6;
-	--menu-header-height: 48px;
+	--menu-header-height: var(--admin-header-height, 48px);
 	--menu-text-color: #fff;
 
 	background-color: var(--menu-bg-color);
@@ -194,9 +194,30 @@ watch(() => router.currentRoute.value.path, newPath => {
 	box-sizing: border-box;
 	flex: 1;
 	min-height: 0;
+	overscroll-behavior: contain;
+	scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+	scrollbar-width: thin;
+	-webkit-overflow-scrolling: touch;
 	overflow-x: hidden;
-	overflow-y: hidden;
+	overflow-y: auto;
 	width: 100%;
+}
+
+.menu-list::-webkit-scrollbar {
+	width: 6px;
+}
+
+.menu-list::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.menu-list::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.26);
+	border-radius: 999px;
+}
+
+.menu-list::-webkit-scrollbar-thumb:hover {
+	background: rgba(255, 255, 255, 0.36);
 }
 
 .menu-footer {

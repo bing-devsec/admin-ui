@@ -950,19 +950,26 @@ onBeforeUnmount(() => {
 }
 
 .write-toolbar {
-    display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 8px 16px;
-    border-bottom: 1px solid #e4e7ed;
     background: #fafafa;
-    flex-shrink: 0;
+    border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 var(--admin-header-height, 48px);
+    flex-wrap: nowrap;
     gap: 12px;
-    flex-wrap: wrap;
+    height: var(--admin-header-height, 48px);
+    justify-content: space-between;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 16px;
+    scrollbar-width: thin;
+    white-space: nowrap;
 }
 
 .toolbar-left {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: 12px;
 }
@@ -986,8 +993,9 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     column-gap: 12px;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
     row-gap: 8px;
-    flex-wrap: wrap;
 }
 
 .toolbar-right :deep(.el-button) {
