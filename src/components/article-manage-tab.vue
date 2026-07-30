@@ -36,9 +36,11 @@
             <template #default="scope">
                 <div class="action-buttons">
                     <el-button size="default"
+                        :disabled="deletingArticleID !== ''"
                         @click="handleEdit((currentPage - 1) * pageSize + scope.$index, scope.row)">编辑</el-button>
-                    <el-button size="default" type="danger"
-                        @click="open((currentPage - 1) * pageSize + scope.$index, scope.row)">删除</el-button>
+                    <el-button size="default" type="danger" :loading="isDeletingArticle(scope.row.id)"
+                        :disabled="deletingArticleID !== '' && !isDeletingArticle(scope.row.id)"
+                        @click="open(scope.row)">删除</el-button>
                 </div>
             </template>
         </el-table-column>
@@ -77,6 +79,11 @@ const title = ref("");
 const content = ref("");
 const describe = ref("");
 const tag = ref("");
+const deletingArticleID = ref("");
+
+function isDeletingArticle(articleID: string): boolean {
+    return deletingArticleID.value === articleID;
+}
 
 // 封装获取博客详情的函数
 async function fetchArticleDetails(id: string) {
@@ -146,7 +153,7 @@ const handleEdit = async (_index: number, row: Article) => {
     }
 };
 
-const open = (index: number, row: Article) => {
+const open = (row: Article) => {
     ElMessageBox.alert(`确定删除 <strong>${row.title}</strong> 这篇文章吗？`, "删除文章", {
         showCancelButton: true,
         confirmButtonText: '确定',
@@ -155,8 +162,32 @@ const open = (index: number, row: Article) => {
         cancelButtonClass: 'messageCancelBtn',
         confirmButtonClass: 'messageConfirmBtn',
         dangerouslyUseHTMLString: true,
-    }).then(() => {
-        handleDelete(index, row);
+        closeOnClickModal: false,
+        closeOnPressEscape: false,
+        beforeClose: async (action, instance, done) => {
+            if (action !== "confirm") {
+                done();
+                return;
+            }
+            if (deletingArticleID.value !== "") {
+                return;
+            }
+
+            deletingArticleID.value = row.id;
+            instance.confirmButtonLoading = true;
+            instance.confirmButtonText = "正在清理 CDN 缓存...";
+            let deleted = false;
+            try {
+                deleted = await handleDelete(row);
+            } finally {
+                instance.confirmButtonLoading = false;
+                instance.confirmButtonText = "确定";
+                deletingArticleID.value = "";
+            }
+            if (deleted) {
+                done();
+            }
+        },
     }).catch((action) => {
         if (action === "cancel") {
             return;
@@ -164,7 +195,7 @@ const open = (index: number, row: Article) => {
     });
 };
 
-async function handleDelete(_index: number, row: Article) {
+async function handleDelete(row: Article): Promise<boolean> {
     try {
         const response = await _axios.delete(`/admin/auth/article/delete`, {
             data: { id: row.id },
@@ -177,12 +208,14 @@ async function handleDelete(_index: number, row: Article) {
                 message: "删除文章成功",
                 type: "success",
             });
+            return true;
         } else {
             ElNotification({
                 title: "Failed",
                 message: message || "删除文章失败",
                 type: "error",
             });
+            return false;
         }
     } catch (error: any) {
         ElNotification({
@@ -190,6 +223,7 @@ async function handleDelete(_index: number, row: Article) {
             message: error?.message ?? String(error),
             type: "error",
         });
+        return false;
     }
 }
 </script>

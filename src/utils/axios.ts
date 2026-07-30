@@ -13,6 +13,7 @@ interface ApiResponse<T = unknown> {
 
 const config: AxiosRequestConfig = {
     baseURL: '/api',
+    timeout: 60_000,
     headers: {
         'Content-Type': 'application/json;charset=utf-8',
     },

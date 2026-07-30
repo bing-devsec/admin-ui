@@ -1,13 +1,23 @@
 <template>
     <div class="submit-article-wrapper">
-        <el-form ref="formRef" :model="article" :rules="rules" label-position="top" :size="size" class="article-form">
+        <el-form
+            ref="formRef"
+            v-loading="submitting"
+            :element-loading-text="submitLoadingText"
+            :model="article"
+            :rules="rules"
+            label-position="top"
+            :size="size"
+            class="article-form"
+        >
             <el-form-item label="标题" prop="title" required>
-                <el-input v-model="article.title" placeholder="请输入文章标题" maxlength="100" show-word-limit />
+                <el-input v-model="article.title" placeholder="请输入文章标题" maxlength="100" show-word-limit
+                    :disabled="submitting" />
             </el-form-item>
 
             <el-form-item label="标签" prop="tag" required>
                 <el-select v-model="article.tag" placeholder="选择已有标签或输入创建新标签" filterable :loading="tagLoading"
-                    allow-create default-first-option style="width: 100%">
+                    :disabled="submitting" allow-create default-first-option style="width: 100%">
                     <el-option v-for="item in tagOptions" :key="item.name" :label="item.name" :value="item.name" />
                 </el-select>
                 <div class="form-hint">输入标签名后回车可创建新标签；若与已有标签同名将自动复用</div>
@@ -18,7 +28,7 @@
                     <div class="label-with-action">
                         <span class="label-text"><span class="required-star">*</span>摘要</span>
                         <el-button type="primary" link size="small" @click="generateDescribe"
-                            :disabled="!props.displayContent">
+                            :disabled="submitting || !props.displayContent">
                             <el-icon style="margin-right: 4px">
                                 <MagicStick />
                             </el-icon>
@@ -28,13 +38,23 @@
                 </template>
                 <el-input ref="describeRef" v-model="article.describe" type="textarea"
                     placeholder="一句话概括文章核心内容（建议 50-200 字）" :autosize="{ minRows: 4, maxRows: 12 }" show-word-limit
-                    :maxlength="200" resize="none" class="describe-textarea" />
+                    :maxlength="200" resize="none" class="describe-textarea" :disabled="submitting" />
             </el-form-item>
 
+            <el-alert
+                v-if="submitting"
+                :title="submitLoadingText"
+                description="后端会等待 EdgeOne 缓存清理任务完成后再返回，请勿关闭页面或重复提交。"
+                type="info"
+                show-icon
+                :closable="false"
+                class="submit-progress-alert"
+            />
+
             <div class="form-footer">
-                <el-button @click="onCancel">取消</el-button>
+                <el-button :disabled="submitting" @click="onCancel">取消</el-button>
                 <el-button type="primary" :loading="submitting" @click="onSubmit">
-                    {{ isEdit ? '保存修改' : '发布' }}
+                    {{ submitButtonText }}
                 </el-button>
             </div>
         </el-form>
@@ -44,7 +64,7 @@
 <script lang="ts" setup>
 import { reactive, ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage, ElMessageBox, ElNotification, type FormInstance, type FormRules } from "element-plus";
+import { ElNotification, type FormInstance, type FormRules } from "element-plus";
 import { MagicStick } from "@element-plus/icons-vue";
 import _axios from "../utils/axios";
 
@@ -90,8 +110,6 @@ const tagOptions = ref<TagItem[]>([]);
 const tagLoading = ref(false);
 const describeRef = ref<any>(null);
 
-// PORTAL_BASE_URL 用于生成线上文章详情页缓存预热命令。
-const PORTAL_BASE_URL = "https://liubing.xyz";
 // DEFAULT_AFTER_SAVE_PATH 是保存文章后的默认兜底页面。
 const DEFAULT_AFTER_SAVE_PATH = "/home/manage-article";
 
@@ -99,6 +117,17 @@ const props = defineProps<{ displayContent: string, id: string, title: string, t
 const emit = defineEmits<{ (e: 'close'): void }>();
 
 const isEdit = computed(() => !!props.id);
+const submitLoadingText = computed(() => (
+    isEdit.value
+        ? "正在保存修改并清理 CDN 缓存，请稍候"
+        : "正在发布文章，请稍候"
+));
+const submitButtonText = computed(() => {
+    if (submitting.value) {
+        return isEdit.value ? "正在保存..." : "正在发布...";
+    }
+    return isEdit.value ? "保存修改" : "发布";
+});
 
 article.title = props.title;
 article.tag = props.tag;
@@ -232,30 +261,6 @@ function onCancel() {
     emit('close');
 }
 
-// escapeHTML 转义命令文本，避免弹窗 HTML 注入。
-function escapeHTML(value: string): string {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-}
-
-// shellQuote 单引号包裹 shell 参数。
-function shellQuote(value: string): string {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-// getSavedArticleID 从接口响应或编辑态参数中提取文章 ID。
-function getSavedArticleID(responseData: any, fallbackID: string): string {
-    const value = responseData?.id ?? fallbackID;
-    if (value === null || value === undefined) {
-        return "";
-    }
-    return String(value).trim();
-}
-
 // normalizeRedirectQuery 从 route query 中提取回跳地址。
 function normalizeRedirectQuery(value: unknown): string {
     if (Array.isArray(value)) {
@@ -298,66 +303,8 @@ async function navigateAfterSave(targetPath: string): Promise<void> {
     }
 }
 
-// buildCacheWarmupCommand 生成文章详情页 CDN 预热命令。
-function buildCacheWarmupCommand(articleID: string): string {
-    const articleURL = `${PORTAL_BASE_URL}/article-detail/${encodeURIComponent(articleID)}`;
-    return `curl -sS -D - -o /dev/null ${shellQuote(articleURL)}`;
-}
-
-// copyTextToClipboard 复制文本到剪贴板，兼容非安全上下文。
-async function copyTextToClipboard(text: string): Promise<void> {
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-    }
-
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "true");
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-        const ok = document.execCommand("copy");
-        if (!ok) {
-            throw new Error("copy command failed");
-        }
-    } finally {
-        document.body.removeChild(textarea);
-    }
-}
-
-// showCacheWarmupCommand 展示缓存重新录入命令，并在确认后复制。
-async function showCacheWarmupCommand(articleID: string): Promise<void> {
-    const command = buildCacheWarmupCommand(articleID);
-    const message = `
-        <div class="cache-command-dialog">
-            <div class="cache-command-status">
-                <span>CDN 清理任务已提交，复制命令到终端执行即可重新录入缓存。</span>
-            </div>
-            <pre class="cache-command-block">${escapeHTML(command)}</pre>
-        </div>
-    `;
-
-    try {
-        await ElMessageBox.alert(message, "重新录入缓存", {
-            dangerouslyUseHTMLString: true,
-            confirmButtonText: "复制命令",
-            closeOnClickModal: false,
-            customClass: "cache-command-message-box",
-        });
-        await copyTextToClipboard(command);
-        ElMessage.success("命令已复制，可以直接粘贴到终端执行");
-    } catch (error: any) {
-        if (error !== "close" && error !== "cancel") {
-            ElMessage.error("复制命令失败，请手动复制弹窗中的命令");
-        }
-    }
-}
-
 async function onSubmit() {
+    if (submitting.value) return;
     if (!formRef.value) return;
     try {
         await formRef.value.validate();
@@ -398,27 +345,17 @@ async function onSubmit() {
 
     request
         .then(async (response: { data: { code: number; message: string; data: any } }) => {
-            const { code, message, data: responseData } = response.data;
+            const { code, message } = response.data;
             const successMsg = isEdit.value ? "修改文章成功" : "添加文章成功";
             const failureMsg = isEdit.value ? "修改文章失败" : "添加文章失败";
             if (code === 2000 && message === "") {
                 ElNotification({ title: "Success", message: successMsg, type: "success" });
                 notifyNewTag();
-                const savedArticleID = getSavedArticleID(responseData, props.id);
-                if (savedArticleID) {
-                    await showCacheWarmupCommand(savedArticleID);
-                } else {
-                    ElNotification({
-                        title: "缓存命令未生成",
-                        message: "接口未返回文章 ID，无法生成文章详情页缓存预热命令",
-                        type: "warning",
-                    });
-                }
                 const afterSavePath = resolveAfterSavePath(props.tag, trimmedTag);
                 emit('close');
                 await navigateAfterSave(afterSavePath);
             } else {
-                ElNotification({ title: "Failed", message: failureMsg, type: "error" });
+                ElNotification({ title: "Failed", message: message || failureMsg, type: "error" });
             }
         })
         .catch((error: any) => {
@@ -486,52 +423,4 @@ async function onSubmit() {
     right: 8px;
 }
 
-:global(.cache-command-message-box) {
-    max-width: 720px;
-    width: min(720px, calc(100vw - 32px));
-    border-radius: 8px;
-    padding: 0;
-}
-
-:global(.cache-command-message-box .el-message-box__header) {
-    padding: 22px 24px 8px;
-}
-
-:global(.cache-command-message-box .el-message-box__title) {
-    color: #1f2937;
-    font-size: 20px;
-    font-weight: 700;
-}
-
-:global(.cache-command-message-box .el-message-box__content) {
-    padding: 8px 24px 0;
-}
-
-:global(.cache-command-message-box .el-message-box__btns) {
-    padding: 20px 24px 24px;
-}
-
-:global(.cache-command-status) {
-    display: flex;
-    align-items: center;
-    margin-bottom: 12px;
-    color: #4b5563;
-    font-size: 14px;
-    line-height: 1.7;
-}
-
-:global(.cache-command-block) {
-    max-height: 180px;
-    overflow: auto;
-    margin: 0;
-    padding: 14px;
-    border-radius: 6px;
-    background: #1f2937;
-    color: #e5e7eb;
-    font-size: 13px;
-    line-height: 1.7;
-    white-space: pre-wrap;
-    word-break: break-all;
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-}
 </style>

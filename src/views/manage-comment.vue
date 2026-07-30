@@ -15,6 +15,13 @@
                 @clear="handleFilterChange"
                 @keyup.enter="handleFilterChange" />
             <el-input
+                v-model.trim="contentKeywordFilter"
+                class="comment-filter"
+                clearable
+                placeholder="按评论关键字筛选"
+                @clear="handleFilterChange"
+                @keyup.enter="handleFilterChange" />
+            <el-input
                 v-model.trim="authorHandleFilter"
                 class="author-filter"
                 clearable
@@ -74,7 +81,7 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column label="状态" min-width="110" max-width="140">
+                <el-table-column label="评论状态" min-width="110" max-width="140">
                     <template #default="scope">
                         <el-tag :type="statusTagType(scope.row.status)" effect="light">
                             {{ statusText(scope.row.status) }}
@@ -82,7 +89,13 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column label="文章" min-width="230" max-width="500" show-overflow-tooltip>
+                <el-table-column label="评论内容" min-width="300" max-width="520" show-overflow-tooltip>
+                    <template #default="scope">
+                        <span class="comment-content-cell">{{ scope.row.content || '-' }}</span>
+                    </template>
+                </el-table-column>
+
+                <el-table-column label="文章标题" min-width="230" max-width="500" show-overflow-tooltip>
                     <template #default="scope">
                         <div class="article-cell">
                             <span class="article-title">{{ scope.row.articleTitle || '文章已删除' }}</span>
@@ -90,17 +103,12 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column label="评论人信息" min-width="290" max-width="390" show-overflow-tooltip>
+                <el-table-column label="评论人编号" min-width="120" max-width="150" show-overflow-tooltip>
                     <template #default="scope">
-                        <div class="author-cell">
-                            <img v-if="scope.row.avatarURL" :src="scope.row.avatarURL" :alt="commentAuthorName(scope.row)" class="author-avatar" />
-                            <span v-else class="author-avatar-fallback">{{ providerInitial(scope.row.provider) }}</span>
-                            <span class="author-provider">{{ providerText(scope.row.provider) }}</span>
-                            <span class="author-separator">｜</span>
-                            <span class="author-code">{{ commentAuthorCode(scope.row) }}</span>
-                            <span class="author-separator">｜</span>
-                            <span class="author-name">{{ commentAuthorName(scope.row) }}</span>
-                        </div>
+                        <button v-if="canOpenAuthor(scope.row)" type="button" class="author-code author-code-link" @click="openAuthor(scope.row)">
+                            {{ commentAuthorCode(scope.row) }}
+                        </button>
+                        <span v-else class="author-code">{{ commentAuthorCode(scope.row) }}</span>
                     </template>
                 </el-table-column>
 
@@ -146,6 +154,14 @@
                         <span class="detail-meta-value">{{ selectedComment.id }}</span>
                     </div>
                     <div class="detail-meta-row">
+                        <span class="detail-meta-label">评论状态</span>
+                        <span class="detail-meta-value">
+                            <el-tag :type="statusTagType(selectedComment.status)" effect="light">
+                                {{ statusText(selectedComment.status) }}
+                            </el-tag>
+                        </span>
+                    </div>
+                    <div class="detail-meta-row">
                         <span class="detail-meta-label">评论类型</span>
                         <span class="detail-meta-value">{{ selectedComment.parentID ? '回复' : '主评论' }}</span>
                     </div>
@@ -165,14 +181,22 @@
                         <span class="detail-meta-label">更新时间</span>
                         <span class="detail-meta-value">{{ selectedComment.updateTime || '-' }}</span>
                     </div>
+                    <div v-if="shouldShowModerationReasons(selectedComment)" class="detail-meta-row detail-meta-row--reasons">
+                        <span class="detail-meta-label">机审原因</span>
+                        <span class="detail-meta-value detail-meta-value--reasons">
+                            <span
+                                v-for="(reason, index) in selectedComment.moderationReasons || []"
+                                :key="`${index}-${reason}`"
+                                class="moderation-reason-chip">
+                                {{ reason }}
+                            </span>
+                        </span>
+                    </div>
                 </div>
 
                 <div class="detail-content-panel">
                     <div class="detail-content-header">
                         <span class="detail-content-title">评论正文</span>
-                        <el-tag :type="statusTagType(selectedComment.status)" effect="light">
-                            {{ statusText(selectedComment.status) }}
-                        </el-tag>
                     </div>
                     <p class="comment-full-content">{{ selectedComment.content }}</p>
                 </div>
@@ -183,6 +207,7 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessageBox, ElNotification } from 'element-plus';
 import pagination from '../components/pagination.vue';
 import _axios from '../utils/axios';
@@ -191,31 +216,28 @@ type CommentStatus = 'pending' | 'approved' | 'rejected';
 
 interface CommentItem {
     id: string;
-    articleID: string;
     articleTitle: string;
     parentID?: string;
-    userID?: string;
-    replyToUserID?: string;
     replyToAuthorName?: string;
     replyToAuthorHandle?: string;
-    authorName: string;
     authorHandle?: string;
-    avatarURL?: string;
-    provider?: string;
     content: string;
     status: CommentStatus;
+    moderationReasons?: string[];
     ip?: string;
     createTime: string;
     updateTime: string;
 }
 
 const commentList = ref<CommentItem[]>([]);
+const router = useRouter();
 const currentPage = ref(1);
 const pageSize = 10;
 const total = ref(0);
 const loading = ref(false);
 const statusFilter = ref('');
 const articleTitleFilter = ref('');
+const contentKeywordFilter = ref('');
 const authorHandleFilter = ref('');
 const commentTimeRange = ref<string[] | null>([]);
 const timeFilterVisible = ref(false);
@@ -333,25 +355,26 @@ const statusTagType = (status: string) => {
     }
 };
 
-const providerText = (provider?: string) => {
-    if (provider === 'github') return 'GitHub';
-    if (provider === 'google') return 'Google';
-    return 'OAuth';
-};
-
-const providerInitial = (provider?: string) => {
-    if (provider === 'github') return 'GH';
-    if (provider === 'google') return 'GO';
-    return 'OA';
-};
-
 const normalizeOptionalValue = (value?: string) => (value || '').trim();
 
-const commentAuthorName = (row: CommentItem) => normalizeOptionalValue(row.authorName) || '-';
-
-const commentAuthorCode = (row: CommentItem) => normalizeOptionalValue(row.authorHandle) || normalizeOptionalValue(row.userID) || '-';
+const commentAuthorCode = (row: CommentItem) => normalizeOptionalValue(row.authorHandle) || '-';
 
 const replyTargetCode = (row: CommentItem) => normalizeOptionalValue(row.replyToAuthorHandle) || normalizeOptionalValue(row.replyToAuthorName) || '-';
+
+const canOpenAuthor = (row: CommentItem) => normalizeOptionalValue(row.authorHandle) !== '';
+
+const shouldShowModerationReasons = (row: CommentItem) => {
+    return (row.status === 'pending' || row.status === 'rejected') && Boolean(row.moderationReasons?.length);
+};
+
+const openAuthor = (row: CommentItem) => {
+    const handle = normalizeOptionalValue(row.authorHandle);
+    if (!handle) return;
+    void router.push({
+        path: '/home/manage-user',
+        query: { handle },
+    });
+};
 
 const openDetail = (row: CommentItem) => {
     selectedComment.value = row;
@@ -371,6 +394,7 @@ const fetchCommentList = async () => {
                 pageSize,
                 status: statusFilter.value || undefined,
                 articleTitle: articleTitleFilter.value || undefined,
+                contentKeyword: contentKeywordFilter.value || undefined,
                 authorHandle: authorHandleFilter.value || undefined,
                 createStartTime: commentTimeRange.value?.[0] || undefined,
                 createEndTime: commentTimeRange.value?.[1] || undefined,
@@ -411,6 +435,7 @@ const handleFilterChange = async () => {
 const resetFilters = async () => {
     statusFilter.value = '';
     articleTitleFilter.value = '';
+    contentKeywordFilter.value = '';
     authorHandleFilter.value = '';
     commentTimeRange.value = [];
     timeRangeDraftStart.value = '';
@@ -577,6 +602,10 @@ onMounted(fetchCommentList);
 }
 
 .article-filter {
+    width: 220px;
+}
+
+.comment-filter {
     width: 220px;
 }
 
@@ -786,65 +815,40 @@ onMounted(fetchCommentList);
     font-weight: 400;
 }
 
-.author-cell {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 6px;
-}
-
-.author-avatar,
-.author-avatar-fallback {
-    width: 24px;
-    height: 24px;
-    flex: 0 0 24px;
-    border-radius: 50%;
-}
-
-.author-avatar {
-    object-fit: cover;
-}
-
-.author-avatar-fallback {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: #eef2ff;
-    color: #526ecc;
-    font-size: 10px;
-    font-weight: 400;
-}
-
-.author-provider {
-    flex: 0 0 48px;
-    color: #909399;
-    font-size: 12px;
-}
-
-.author-separator {
-    flex: 0 0 auto;
-    color: #d4d7de;
-    font-size: 12px;
-}
-
-.author-name,
+.comment-content-cell,
 .author-code {
+    display: block;
     overflow: hidden;
     color: #303133;
-    font-size: 13px;
     font-weight: 400;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.author-name {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: 150px;
+.comment-content-cell {
+    font-size: 14px;
 }
 
 .author-code {
-    flex: 0 0 52px;
+    font-size: 13px;
+}
+
+.author-code-link {
+    width: fit-content;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #409eff;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+}
+
+.author-code-link:hover {
+    color: #337ecc;
+    text-decoration: underline;
+    text-underline-offset: 3px;
 }
 
 .action-buttons {
@@ -902,6 +906,11 @@ onMounted(fetchCommentList);
     border-bottom: 0;
 }
 
+.detail-meta-row--reasons {
+    align-items: flex-start;
+    background: #fffaf2;
+}
+
 .detail-meta-label {
     width: 66px;
     flex: 0 0 66px;
@@ -923,10 +932,32 @@ onMounted(fetchCommentList);
     white-space: nowrap;
 }
 
+.detail-meta-value--reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.moderation-reason-chip {
+    display: inline-flex;
+    max-width: 100%;
+    padding: 4px 8px;
+    border: 1px solid #f3d19e;
+    border-radius: 4px;
+    background: #fff;
+    color: #7d4b00;
+    font-size: 12px;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
 .detail-content-panel {
     padding: 16px;
     border: 1px solid #e4e7ed;
-    border-radius: 12px;
+    border-radius: 6px;
     background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
 }
 

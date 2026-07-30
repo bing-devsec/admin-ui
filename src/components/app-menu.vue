@@ -48,6 +48,20 @@
 				<span>评论管理</span>
 			</el-menu-item>
 
+			<el-menu-item index="/home/manage-comment-report">
+				<el-icon>
+					<Warning />
+				</el-icon>
+				<span>举报管理</span>
+			</el-menu-item>
+
+			<el-menu-item index="/home/manage-comment-moderation">
+				<el-icon>
+					<Search />
+				</el-icon>
+				<span>审核模拟</span>
+			</el-menu-item>
+
 			<el-menu-item index="/home/manage-user">
 				<el-icon>
 					<User />
@@ -86,7 +100,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ArrowLeft, ArrowRight, Back, Comment, Document, DocumentAdd, Link, Management, Postcard, User } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, Back, Comment, Document, DocumentAdd, Link, Management, Postcard, Search, User, Warning } from "@element-plus/icons-vue";
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 

@@ -38,7 +38,7 @@
 
 							<el-tab-pane name="sms-login">
 								<template #label><span>短信登录</span></template>
-								<div v-if="activeTab === 'sms-login'">
+								<div v-if="activeTab === 'sms-login'" class="sms-fields">
 									<el-input v-model="phone" clearable type="text" size="large"
 										placeholder="手机号"></el-input>
 									<div class="verification">
@@ -79,6 +79,7 @@ import { ElNotification } from "element-plus";
 import Ribbons from "../utils/ribbon";
 
 const TOO_MANY_REQUESTS_CODE = 4290;
+const SMS_SERVICE_DISABLED_MESSAGE = "短信发送服务错误";
 
 type RateLimitData = {
 	retryAfter?: number;
@@ -406,6 +407,14 @@ const handleLoginSuccess = (data: { userID: string }) => {
 	router.push("/home/manage-article").catch(() => { });
 };
 
+const showSMSServiceDisabled = () => {
+	ElNotification({
+		title: "短信登录",
+		message: SMS_SERVICE_DISABLED_MESSAGE,
+		type: "warning",
+	});
+};
+
 // 短信登录
 const smsLogin = async () => {
 	if (!phone.value || !smsCode.value) {
@@ -417,73 +426,13 @@ const smsLogin = async () => {
 		return;
 	}
 
-	const reqData = { phone: phone.value, code: smsCode.value };
-	isLoginSubmitting.value = true;
-	try {
-		const response = await window.$axios.post("/admin/sms-login", reqData);
-		const { code, message, data } = response.data;
-		if (code === 2000 && message === "") {
-			handleLoginSuccess(data);
-		} else {
-			ElNotification({
-				title: "Failed",
-				message: "登录失败",
-				type: "error",
-			});
-		}
-	} catch (error) {
-		ElNotification({
-			title: "Error",
-			message: "登录失败，请稍后重试",
-			type: "error",
-		});
-	} finally {
-		isLoginSubmitting.value = false;
-	}
+	showSMSServiceDisabled();
 };
 
 // 发送验证码
 const sendCode = async () => {
 	if (isPhoneValid(phone.value)) {
-		const data = { phone: phone.value };
-		try {
-			const response = await window.$axios.post("/admin/sms-code", data);
-			const { code, message } = response.data;
-			if (code === 2000 && message === "") {
-				countDown.value = 60;
-				intervalId = setInterval(() => {
-					if (countDown.value > 0) {
-						countDown.value--;
-					} else {
-						if (intervalId) clearInterval(intervalId);
-					}
-				}, 1000);
-
-				ElNotification({
-					title: "Success",
-					message: "验证码发送成功",
-					type: "success",
-				});
-			} else if (code === 4000) {
-				ElNotification({
-					title: "Failed",
-					message: "无效的手机号",
-					type: "error",
-				});
-			} else {
-				ElNotification({
-					title: "Failed",
-					message: "登录失败",
-					type: "error",
-				});
-			}
-		} catch (error) {
-			ElNotification({
-				title: "Error",
-				message: "验证码发送失败，请稍后重试",
-				type: "error",
-			});
-		}
+		showSMSServiceDisabled();
 	} else {
 		ElNotification({
 			title: "Error",
@@ -773,24 +722,33 @@ watch(activeTab, () => {
 		overflow: visible;
 	}
 
-	.credential-fields {
+	.credential-fields,
+	.sms-fields {
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
 		margin: 14px 0 6px;
 	}
 
-	.credential-fields .el-input {
+	.credential-fields .el-input,
+	.sms-fields > .el-input,
+	.sms-fields .verification .el-input {
 		margin: 0;
 	}
 
-	.credential-fields :deep(.el-input__wrapper) {
+	.credential-fields :deep(.el-input__wrapper),
+	.sms-fields :deep(.el-input__wrapper) {
 		min-height: 46px;
 		padding: 0 12px;
 	}
 
-	.credential-fields :deep(.el-input__inner) {
+	.credential-fields :deep(.el-input__inner),
+	.sms-fields :deep(.el-input__inner) {
 		font-size: 16px;
+	}
+
+	.sms-fields .verification {
+		gap: 10px;
 	}
 
 	.button {

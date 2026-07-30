@@ -198,7 +198,8 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessageBox, ElNotification } from 'element-plus';
 import pagination from '../components/pagination.vue';
 import _axios from '../utils/axios';
@@ -223,6 +224,8 @@ interface UserItem {
 }
 
 const userList = ref<UserItem[]>([]);
+const route = useRoute();
+const router = useRouter();
 const currentPage = ref(1);
 const pageSize = 10;
 const total = ref(0);
@@ -299,6 +302,34 @@ const commentDisabledUntilText = (row: UserItem) => {
     return row.commentDisabledUntil || '永久';
 };
 
+const routeQueryString = (value: unknown) => {
+    if (Array.isArray(value)) return String(value[0] || '');
+    if (typeof value === 'string') return value;
+    return '';
+};
+
+const syncHandleFilterFromRoute = () => {
+    const handle = routeQueryString(route.query.handle).trim();
+    if (handle === handleFilter.value) return false;
+    handleFilter.value = handle;
+    currentPage.value = 1;
+    return true;
+};
+
+const replaceHandleRouteQuery = () => {
+    const nextQuery = { ...route.query };
+    const handle = handleFilter.value.trim();
+    if (handle) {
+        nextQuery.handle = handle;
+    } else {
+        delete nextQuery.handle;
+    }
+    void router.replace({
+        path: route.path,
+        query: nextQuery,
+    });
+};
+
 const fetchUserList = async () => {
     loading.value = true;
     try {
@@ -335,6 +366,7 @@ const fetchUserList = async () => {
 };
 
 const handleFilterChange = async () => {
+    replaceHandleRouteQuery();
     currentPage.value = 1;
     await fetchUserList();
 };
@@ -344,6 +376,7 @@ const resetFilters = async () => {
     displayNameFilter.value = '';
     providerFilter.value = '';
     permissionFilter.value = '';
+    replaceHandleRouteQuery();
     currentPage.value = 1;
     await fetchUserList();
 };
@@ -457,7 +490,18 @@ const handleUserAction = (command: string | number | object, row: UserItem) => {
     }
 };
 
-onMounted(fetchUserList);
+watch(
+    () => route.query.handle,
+    async () => {
+        if (!syncHandleFilterFromRoute()) return;
+        await fetchUserList();
+    },
+);
+
+onMounted(async () => {
+    syncHandleFilterFromRoute();
+    await fetchUserList();
+});
 </script>
 
 <style scoped>
