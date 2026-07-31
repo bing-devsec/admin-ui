@@ -64,6 +64,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/',
         component: () => import('@/views/login.vue'),
+        meta: { allowPortrait: true },
     },
 ];
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-app">
+  <div class="admin-app" :class="{ 'admin-app--allow-portrait': allowPortrait }">
     <div class="admin-app__content">
       <RouterView></RouterView>
     </div>
@@ -15,7 +15,11 @@
 </template>
 
 <script setup>
-import { RouterView } from 'vue-router';
+import { computed } from 'vue';
+import { RouterView, useRoute } from 'vue-router';
+
+const route = useRoute();
+const allowPortrait = computed(() => route.matched.some((record) => record.meta.allowPortrait));
 </script>
 
 <style scoped>
@@ -33,22 +37,22 @@ import { RouterView } from 'vue-router';
 }
 
 @media (any-pointer: coarse) and (orientation: landscape) {
-  .admin-app {
+  .admin-app:not(.admin-app--allow-portrait) {
     min-width: 900px;
   }
 }
 
 @media (any-pointer: coarse) and (orientation: portrait) {
-  .admin-app {
+  .admin-app:not(.admin-app--allow-portrait) {
     min-height: 100dvh;
     overflow: hidden;
   }
 
-  .admin-app__content {
+  .admin-app:not(.admin-app--allow-portrait) .admin-app__content {
     display: none;
   }
 
-  .mobile-landscape-guard {
+  .admin-app:not(.admin-app--allow-portrait) .mobile-landscape-guard {
     align-items: center;
     background:
       radial-gradient(circle at 20% 20%, rgba(64, 158, 255, 0.18), transparent 30%),
