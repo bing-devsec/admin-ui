@@ -11,6 +11,19 @@
                         <span class="panel-title">评论审核模拟</span>
                     </div>
                     <div class="panel-tools">
+                        <el-popover placement="bottom-end" :width="340" trigger="click">
+                            <template #reference>
+                                <el-button :type="hasBehaviorContext ? 'primary' : 'default'" plain>
+                                    行为上下文
+                                </el-button>
+                            </template>
+                            <div class="behavior-context-form">
+                                <p>选填。提供任一项后只读检查频率、重复内容和近重复行为，不写入统计。</p>
+                                <el-input v-model="behaviorUserID" clearable placeholder="用户 ID" />
+                                <el-input v-model="behaviorArticleID" clearable placeholder="文章 ID" />
+                                <el-input v-model="behaviorClientIP" clearable placeholder="客户端 IP" />
+                            </div>
+                        </el-popover>
                         <el-tag :type="lineLimitExceeded ? 'danger' : 'info'" effect="light">
                             评论数：{{ commentLines.length }}/5000
                         </el-tag>
@@ -154,7 +167,7 @@
             </div>
         </section>
 
-        <el-drawer v-model="detailDrawer" :destroy-on-close="true" size="640px" class="moderation-detail-drawer">
+        <el-drawer v-model="detailDrawer" :destroy-on-close="true" size="min(920px, 92vw)" class="moderation-detail-drawer">
             <template #header>
                 <div class="drawer-header">
                     <span class="drawer-title">审核详情</span>
@@ -180,8 +193,18 @@
                         <span class="detail-meta-value">{{ selectedRow.riskScore }}</span>
                     </div>
                     <div class="detail-meta-row">
+                        <span class="detail-meta-label">安全分</span>
+                        <span class="detail-meta-value">{{ selectedRow.finalScore }}</span>
+                    </div>
+                    <div class="detail-meta-row">
                         <span class="detail-meta-label">决策</span>
                         <span class="detail-meta-value">{{ moderationDecisionText(selectedRow.decision) }}</span>
+                    </div>
+                    <div class="detail-meta-row">
+                        <span class="detail-meta-label">行为检测</span>
+                        <span class="detail-meta-value">
+                            {{ selectedRow.trace?.behaviorEvaluated ? '已只读执行' : '未执行（未提供上下文）' }}
+                        </span>
                     </div>
                 </div>
 
@@ -200,20 +223,52 @@
                 </div>
 
                 <div class="detail-section">
-                    <div class="detail-section-title">命中信号</div>
-                    <el-table v-if="selectedRow.signals?.length" :data="selectedRow.signals" size="small" class="signal-table">
+                    <div class="detail-section-title">语义分句</div>
+                    <div v-if="selectedRow.trace?.clauses?.length" class="clause-list">
+                        <div v-for="clause in selectedRow.trace.clauses" :key="clause.id" class="clause-item">
+                            <span class="clause-id">片段 {{ clause.id }}</span>
+                            <p>{{ clause.text.raw }}</p>
+                        </div>
+                    </div>
+                    <el-empty v-else description="没有分句信息" :image-size="72" />
+                </div>
+
+                <div class="detail-section">
+                    <div class="detail-section-header">
+                        <div class="detail-section-title">审核信号流水线</div>
+                        <el-radio-group v-model="signalStage" size="small">
+                            <el-radio-button label="detector">
+                                原始 {{ selectedRow.trace?.detectorSignals?.length || 0 }}
+                            </el-radio-button>
+                            <el-radio-button label="suppressed">
+                                已抑制 {{ selectedRow.trace?.suppressedSignals?.length || 0 }}
+                            </el-radio-button>
+                            <el-radio-button label="final">
+                                最终 {{ selectedRow.signals?.length || 0 }}
+                            </el-radio-button>
+                        </el-radio-group>
+                    </div>
+                    <el-table v-if="selectedSignalRows.length" :data="selectedSignalRows" size="small" class="signal-table">
+                        <el-table-column prop="clauseID" label="片段" width="66">
+                            <template #default="scope">{{ scope.row.clauseID || '全局' }}</template>
+                        </el-table-column>
                         <el-table-column label="来源" min-width="92">
                             <template #default="scope">{{ moderationSourceText(scope.row.source) }}</template>
+                        </el-table-column>
+                        <el-table-column label="分类" min-width="110" show-overflow-tooltip>
+                            <template #default="scope">{{ moderationCategoryText(scope.row.category) }}</template>
                         </el-table-column>
                         <el-table-column label="等级" min-width="92">
                             <template #default="scope">{{ moderationLevelText(scope.row.level) }}</template>
                         </el-table-column>
-                        <el-table-column prop="score" label="分值" min-width="70" />
-                        <el-table-column label="原因" min-width="260" show-overflow-tooltip>
+                        <el-table-column prop="score" label="分值" width="64" />
+                        <el-table-column prop="ruleID" label="规则 ID" min-width="150" show-overflow-tooltip />
+                        <el-table-column prop="evidence" label="证据" min-width="160" show-overflow-tooltip />
+                        <el-table-column label="原因" min-width="220" show-overflow-tooltip>
                             <template #default="scope">{{ scope.row.reasonText || scope.row.reason || '-' }}</template>
                         </el-table-column>
                     </el-table>
-                    <el-empty v-else description="没有命中风险信号" :image-size="72" />
+                    <el-empty v-else :description="emptySignalStageText" :image-size="72" />
                 </div>
 
                 <div class="detail-section">
@@ -235,6 +290,14 @@
                             <span>拼音折叠</span>
                             <p>{{ selectedRow.text.pinyinFolded }}</p>
                         </div>
+                        <div v-if="selectedRow.text.confusable" class="text-row">
+                            <span>混淆骨架</span>
+                            <p>{{ selectedRow.text.confusable }}</p>
+                        </div>
+                        <div v-if="selectedRow.text.decodedTexts?.length" class="text-row">
+                            <span>解码文本</span>
+                            <p>{{ selectedRow.text.decodedTexts.join('\n') }}</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -254,6 +317,7 @@ interface ModerationPreviewText {
     raw: string;
     normalized: string;
     compact: string;
+    confusable?: string;
     pinyinFolded?: string;
     decodedTexts?: string[];
 }
@@ -267,6 +331,19 @@ interface ModerationPreviewSignal {
     reasonText?: string;
     evidence?: string;
     ruleID?: string;
+    clauseID?: number;
+}
+
+interface ModerationPreviewClause {
+    id: number;
+    text: ModerationPreviewText;
+}
+
+interface ModerationPreviewTrace {
+    clauses: ModerationPreviewClause[];
+    detectorSignals?: ModerationPreviewSignal[];
+    suppressedSignals?: ModerationPreviewSignal[];
+    behaviorEvaluated: boolean;
 }
 
 interface ModerationPreviewRow {
@@ -280,6 +357,8 @@ interface ModerationPreviewRow {
     rawReasons?: string[];
     signals?: ModerationPreviewSignal[];
     text: ModerationPreviewText;
+    trace: ModerationPreviewTrace;
+    behaviorDryRun: boolean;
 }
 
 interface ModerationPreviewResponse {
@@ -300,12 +379,16 @@ const resultCurrentPage = ref(1);
 const resultPageSize = ref(20);
 const detailDrawer = ref(false);
 const selectedRow = ref<ModerationPreviewRow | null>(null);
+const signalStage = ref<'detector' | 'suppressed' | 'final'>('final');
 const resizing = ref(false);
 const workbenchRef = ref<HTMLElement | null>(null);
 const inputPanelWidth = ref(480);
 const editorRef = ref<HTMLTextAreaElement | null>(null);
 const editorScrollTop = ref(0);
 const activeInputLine = ref(1);
+const behaviorUserID = ref('');
+const behaviorArticleID = ref('');
+const behaviorClientIP = ref('');
 
 const EDITOR_LINE_HEIGHT = 24;
 const EDITOR_PADDING_TOP = 10;
@@ -324,6 +407,9 @@ const commentLines = computed(() => commentEntries.value.map((item) => item.cont
 const lineLimitExceeded = computed(() => inputLineCount.value > MAX_COMMENT_LINES);
 const hasTooLongLine = computed(() => commentLines.value.some((line) => Array.from(line).length > 1000));
 const canSubmit = computed(() => commentLines.value.length > 0 && !lineLimitExceeded.value && !hasTooLongLine.value && !loading.value);
+const hasBehaviorContext = computed(() => Boolean(
+    behaviorUserID.value.trim() || behaviorArticleID.value.trim() || behaviorClientIP.value.trim(),
+));
 const totalInputLines = computed(() => Math.max(rawLines.value.length, 1));
 const editorLineNumbers = computed(() => Array.from({ length: totalInputLines.value }, (_, index) => index + 1));
 const editorGutterWidth = computed(() => Math.max(38, String(totalInputLines.value).length * 8 + 22));
@@ -342,6 +428,28 @@ const maxResultPage = computed(() => Math.max(1, Math.ceil(filteredPreviewRows.v
 const pagedPreviewRows = computed(() => {
     const start = (resultCurrentPage.value - 1) * resultPageSize.value;
     return filteredPreviewRows.value.slice(start, start + resultPageSize.value);
+});
+const selectedSignalRows = computed(() => {
+    const row = selectedRow.value;
+    if (!row) return [];
+    switch (signalStage.value) {
+        case 'detector':
+            return row.trace?.detectorSignals || [];
+        case 'suppressed':
+            return row.trace?.suppressedSignals || [];
+        default:
+            return row.signals || [];
+    }
+});
+const emptySignalStageText = computed(() => {
+    switch (signalStage.value) {
+        case 'detector':
+            return '探测器没有产生信号';
+        case 'suppressed':
+            return '语义层没有抑制信号';
+        default:
+            return '最终没有保留信号';
+    }
 });
 const activeLineStyle = computed(() => ({
     top: `${EDITOR_PADDING_TOP + (activeInputLine.value - 1) * EDITOR_LINE_HEIGHT - editorScrollTop.value}px`,
@@ -412,9 +520,28 @@ const moderationSourceText = (source: string) => {
             return '上下文规则';
         case 'behavior':
             return '行为风险';
+        case 'semantic':
+            return '语义修正';
+        case 'similarity':
+            return '相似度检测';
         default:
             return source || '-';
     }
+};
+
+const moderationCategoryText = (category?: string) => {
+    const labels: Record<string, string> = {
+        abuse: '辱骂攻击',
+        benign_context: '良性语境',
+        gambling: '赌博',
+        hate: '仇恨排斥',
+        political: '政治动员',
+        sensitive: '敏感风险',
+        sexual: '色情低俗',
+        spam_fraud: '垃圾与欺诈',
+        violence: '暴力威胁',
+    };
+    return category ? labels[category] || category : '-';
 };
 
 const moderationLevelText = (level?: string) => {
@@ -572,12 +699,17 @@ const resetPreview = () => {
     resultPageSize.value = 20;
     selectedRow.value = null;
     detailDrawer.value = false;
+    signalStage.value = 'final';
+    behaviorUserID.value = '';
+    behaviorArticleID.value = '';
+    behaviorClientIP.value = '';
     activeInputLine.value = 1;
     editorScrollTop.value = 0;
 };
 
 const openDetail = (row: ModerationPreviewRow) => {
     selectedRow.value = row;
+    signalStage.value = 'final';
     detailDrawer.value = true;
     focusInputLine(row.line);
 };
@@ -597,6 +729,9 @@ const runPreview = async () => {
         const submittedEntries = [...commentEntries.value];
         const response = await _axios.post('/admin/auth/comment/moderation-preview', {
             comments: submittedEntries.map((item) => item.content),
+            userID: behaviorUserID.value.trim(),
+            articleID: behaviorArticleID.value.trim(),
+            clientIP: behaviorClientIP.value.trim(),
         });
         const { code, message, data } = response.data;
         if (code === 2000 && message === '') {
@@ -693,6 +828,19 @@ watch([() => filteredPreviewRows.value.length, resultPageSize], () => {
     flex: 0 0 auto;
     align-items: center;
     gap: 8px;
+}
+
+:global(.behavior-context-form) {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+:global(.behavior-context-form p) {
+    margin: 0 0 2px;
+    color: #606266;
+    font-size: 12px;
+    line-height: 1.6;
 }
 
 .panel-title {
@@ -1035,6 +1183,53 @@ watch([() => filteredPreviewRows.value.length, resultPageSize], () => {
     color: #303133;
     font-size: 14px;
     font-weight: 400;
+}
+
+.detail-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e4e7ed;
+}
+
+.detail-section-header .detail-section-title {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.clause-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.clause-item {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.clause-id {
+    color: #409eff;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.clause-item p {
+    min-width: 0;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .detail-content {
