@@ -404,7 +404,6 @@
 }
 
 .article-body-ssr .ssr-code-lang {
-    text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;
 }
@@ -683,7 +682,6 @@
 }
 
 .ssr-code-fs-info {
-    text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;
     font-size: 13px;

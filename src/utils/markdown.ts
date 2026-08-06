@@ -11,6 +11,7 @@ import footnotePlugin from 'markdown-it-footnote';
 import katex from 'katex';
 import type { Highlighter, ThemedToken } from 'shiki';
 import { createHighlighter, bundledLanguages } from 'shiki';
+import { getCustomShikiLanguage, isBundledShikiLanguage, isPlainTextShikiLanguage, normalizeCodeFenceLanguage } from './shikiLanguages';
 
 const md = new MarkdownIt({
     html: true,
@@ -287,10 +288,17 @@ function getHighlighter(): Promise<Highlighter> {
 
 async function ensureLanguageLoaded(highlighter: Highlighter, lang: string): Promise<boolean> {
     if (!lang) return false;
+    if (isPlainTextShikiLanguage(lang)) return true;
     if (loadedLanguages.has(lang)) return true;
-    if (!(lang in bundledLanguages)) return false;
+    const customLanguage = getCustomShikiLanguage(lang);
     try {
-        await highlighter.loadLanguage(lang as keyof typeof bundledLanguages);
+        if (customLanguage) {
+            await highlighter.loadLanguage(customLanguage);
+        } else if (isBundledShikiLanguage(lang)) {
+            await highlighter.loadLanguage(lang);
+        } else {
+            return false;
+        }
         loadedLanguages.add(lang);
         return true;
     } catch {
@@ -453,7 +461,8 @@ async function resolveShikiPlaceholders(html: string, env: RenderEnv): Promise<s
 md.renderer.rules.fence = function (tokens, idx, _options, env: RenderEnv) {
     const token = tokens[idx];
     const info = (token.info || '').trim();
-    const lang = (info.split(/\s+/g)[0] || '').toLowerCase();
+    const rawLang = (info.split(/\s+/g)[0] || '').toLowerCase();
+    const lang = normalizeCodeFenceLanguage(rawLang);
     const rawCode = token.content || '';
 
     if (lang === 'mermaid') {
@@ -476,7 +485,7 @@ md.renderer.rules.fence = function (tokens, idx, _options, env: RenderEnv) {
     env.pendingHighlights.set(placeholderToken, { lang, rawCode });
     const linesPlaceholder = `${SHIKI_PLACEHOLDER_PREFIX}${placeholderToken}${SHIKI_PLACEHOLDER_SUFFIX}`;
     const linesHtml = linesPlaceholder;
-    const langLabel = lang || 'text';
+    const langLabel = rawLang || 'text';
     const safeLang = md.utils.escapeHtml(langLabel);
 
     const COLLAPSE_THRESHOLD = 30;
