@@ -371,6 +371,16 @@ function tokenizedLinesToHtml(linesTokens: ThemedToken[][]): string | null {
     return out.join('');
 }
 
+function isBlankTokenLine(line: ThemedToken[]): boolean {
+    return line.length === 0 || line.every((token) => token.content.length === 0);
+}
+
+function trimTrailingBlankTokenLine(linesTokens: ThemedToken[][]): void {
+    if (linesTokens.length > 0 && isBlankTokenLine(linesTokens[linesTokens.length - 1])) {
+        linesTokens.pop();
+    }
+}
+
 function rawCodeToLinesHtml(rawCode: string): string {
     const lines = rawCode.replace(/\n$/, '').split('\n');
     if (lines.length === 0) {
@@ -421,9 +431,7 @@ async function resolveShikiPlaceholders(html: string, env: RenderEnv): Promise<s
         if (supported) {
             let linesTokens = tryHighlight(lang, rawCode);
             if (linesTokens) {
-                if (linesTokens.length > 0 && linesTokens[linesTokens.length - 1].length === 0) {
-                    linesTokens.pop();
-                }
+                trimTrailingBlankTokenLine(linesTokens);
                 highlighted = tokenizedLinesToHtml(linesTokens);
             }
 
@@ -437,9 +445,7 @@ async function resolveShikiPlaceholders(html: string, env: RenderEnv): Promise<s
                 });
                 linesTokens = tryHighlight(lang, rawCode);
                 if (linesTokens) {
-                    if (linesTokens.length > 0 && linesTokens[linesTokens.length - 1].length === 0) {
-                        linesTokens.pop();
-                    }
+                    trimTrailingBlankTokenLine(linesTokens);
                     highlighted = tokenizedLinesToHtml(linesTokens);
                 }
             }
