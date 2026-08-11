@@ -279,7 +279,7 @@
     margin: 1em 0;
     padding: 0.9em 1em;
     border: 1px solid var(--admonition-border);
-    border-radius: 10px;
+    border-radius: 4px;
     background: var(--admonition-bg);
     color: #2f3a4a;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
@@ -384,7 +384,7 @@
  * ============================================================ */
 .article-body-ssr .ssr-code-block {
     margin: 1em 0;
-    border-radius: 6px;
+    border-radius: 4px;
     background-color: #24292e;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     overflow: hidden;
@@ -406,6 +406,8 @@
 .article-body-ssr .ssr-code-lang {
     letter-spacing: 0.5px;
     font-weight: 600;
+    font-size: clamp(13px, 12px + 0.2vw, 14px);
+    line-height: 1.2;
 }
 
 /* ============================================================
@@ -684,7 +686,8 @@
 .ssr-code-fs-info {
     letter-spacing: 0.5px;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 14px;
+    line-height: 1.2;
 }
 
 .ssr-code-fs-actions {
@@ -1040,7 +1043,7 @@
  *   贯穿整个代码块（视觉上滚动条左端紧贴代码块外框）；
  * - 新方案把行号抽成独立 DOM 列，<pre> 单独 overflow-x: auto，
  *   滚动条只出现在代码列下方，与 VSCode / GitHub 常见样式一致。
- * - .ssr-code-pane 是 flex，左列定宽、右列 flex:1 + min-width:0 防溢出。
+ * - .ssr-code-pane 是 flex，左列按行号位数自适应、右列 flex:1 + min-width:0 防溢出。
  * ============================================================ */
 .article-body-ssr .ssr-code-pane {
     display: flex;
@@ -1050,7 +1053,8 @@
 .article-body-ssr .ssr-code-gutter {
     flex: 0 0 auto;
     padding: 12px 8px 12px 14px;
-    width: 44px;
+    min-width: 36px;
+    width: max-content;
     box-sizing: border-box;
     background-color: transparent;
     color: #5c6370;
@@ -1065,6 +1069,7 @@
 
 .article-body-ssr .ssr-code-num {
     display: block;
+    white-space: nowrap;
 }
 
 /* 单行：行号已迁出到 gutter，这里清掉左 padding 与伪元素 */
@@ -1090,7 +1095,7 @@
     margin: 1em 0;
     padding: 16px 18px;
     background-color: #24292e;
-    border-radius: 6px;
+    border-radius: 4px;
     overflow-x: auto;
     line-height: 1.55;
     font-size: 14px;
@@ -1141,7 +1146,7 @@
     background-color: #fff;
     /* 与 H1 (#2c3e50) 同色系但更轻盈的藏青色，避免抢 H1 视觉权重 */
     border: 1px solid #4a6079;
-    border-radius: 6px;
+    border-radius: 4px;
     overflow: hidden;
 }
 
@@ -1261,7 +1266,7 @@
     font-size: clamp(13px, 12px + 0.3vw, 14px);
 }
 .article-body-ssr .ssr-code-head {
-    padding: clamp(5px, 3px + 0.5vw, 8px) clamp(10px, 6px + 1vw, 14px);
+    padding: clamp(3px, 2px + 0.35vw, 5px) clamp(10px, 6px + 1vw, 14px);
     font-size: clamp(11px, 10px + 0.3vw, 13px);
 }
 .article-body-ssr .ssr-code-block .ssr-code-pre {
@@ -1270,7 +1275,8 @@
 }
 .article-body-ssr .ssr-code-gutter {
     padding: clamp(10px, 8px + 0.5vw, 14px) clamp(6px, 5px + 0.3vw, 8px) clamp(10px, 8px + 0.5vw, 14px) clamp(10px, 8px + 0.5vw, 14px);
-    width: clamp(34px, 30px + 1vw, 42px);
+    min-width: clamp(32px, 30px + 0.5vw, 36px);
+    width: max-content;
     font-size: clamp(13px, 12px + 0.3vw, 14px);
 }
 
@@ -1346,7 +1352,7 @@
     padding: clamp(8px, 6px + 0.5vw, 12px);
     background-color: #fafbfc;
     border: 1px solid #e1e4e8;
-    border-radius: 6px;
+    border-radius: 4px;
     text-align: center;
     overflow-x: auto;
 }
