@@ -13,11 +13,7 @@
                     <el-option label="全部状态" value="" />
                     <el-option label="已使用" value="used" />
                     <el-option label="未使用" value="unused" />
-                    <el-option label="缺失" value="missing" />
                 </el-select>
-                <el-button type="primary" :loading="scanLoading" @click="scanImages">
-                    重新扫描
-                </el-button>
             </div>
         </section>
 
@@ -136,16 +132,8 @@
                         </span>
                     </div>
                     <div class="detail-meta-row">
-                        <span class="detail-meta-label">来源</span>
-                        <span class="detail-meta-value">{{ selectedDetail.image.source || '-' }}</span>
-                    </div>
-                    <div class="detail-meta-row">
                         <span class="detail-meta-label">引用次数</span>
                         <span class="detail-meta-value">{{ selectedDetail.image.refCount }}</span>
-                    </div>
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">最后扫描</span>
-                        <span class="detail-meta-value">{{ selectedDetail.image.lastSeenTime || '-' }}</span>
                     </div>
                     <div class="detail-meta-row">
                         <span class="detail-meta-label">更新时间</span>
@@ -194,11 +182,8 @@ interface ImageItem {
     mime: string;
     size: number;
     etag: string;
-    status: 'used' | 'unused' | 'missing';
-    source: string;
+    status: 'used' | 'unused';
     refCount: number;
-    lastSeenTime: string;
-    objectModifiedTime: string;
     createTime: string;
     updateTime: string;
 }
@@ -222,7 +207,6 @@ const total = ref(0);
 const statusFilter = ref('used');
 const keyword = ref('');
 const loading = ref(false);
-const scanLoading = ref(false);
 const detailLoading = ref(false);
 const detailDrawer = ref(false);
 const deletingID = ref('');
@@ -260,29 +244,6 @@ const handleCurrentChange = async (newPage: number) => {
 const handleFilterChange = async () => {
     currentPage.value = 1;
     await fetchImageList();
-};
-
-const scanImages = async () => {
-    scanLoading.value = true;
-    try {
-        const response = await _axios.post('/admin/auth/article/image/scan');
-        const { code, message, data } = response.data;
-        if (code === 2000 && message === '') {
-            ElNotification({
-                title: 'Success',
-                message: `扫描完成：${data.imageTotal} 张图片，${data.referenceTotal} 次引用`,
-                type: 'success',
-            });
-            currentPage.value = 1;
-            await fetchImageList();
-        } else {
-            ElNotification({ title: 'Failed', message: message || '扫描图片失败', type: 'error' });
-        }
-    } catch (error: any) {
-        ElNotification({ title: 'Error', message: error?.message ?? String(error), type: 'error' });
-    } finally {
-        scanLoading.value = false;
-    }
 };
 
 const openDetail = async (row: ImageItem) => {
@@ -372,8 +333,6 @@ const statusText = (status: string) => {
             return '已使用';
         case 'unused':
             return '未使用';
-        case 'missing':
-            return '缺失';
         default:
             return status || '-';
     }
@@ -385,8 +344,6 @@ const statusTagType = (status: string) => {
             return 'success';
         case 'unused':
             return 'warning';
-        case 'missing':
-            return 'danger';
         default:
             return 'info';
     }
