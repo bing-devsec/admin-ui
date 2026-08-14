@@ -630,6 +630,7 @@ function buildCosSrcset(rawUrl: string): string | null {
     }
     if (!COS_HOSTS.test(parsed.hostname)) return null;
     if (parsed.search) return null;
+    if (parsed.pathname.toLowerCase().endsWith('.svg')) return null;
 
     return COS_SRCSET_WIDTHS
         .map(w => `${rawUrl}?imageMogr2/thumbnail/${w}x/format/webp/quality/85 ${w}w`)

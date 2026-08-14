@@ -20,6 +20,16 @@ const routes: RouteRecordRaw[] = [
                 meta: { requiresAuth: true },
             },
             {
+                path: 'manage-draft',
+                component: () => import('@/views/manage-draft.vue'),
+                meta: { requiresAuth: true },
+            },
+            {
+                path: 'manage-image',
+                component: () => import('@/views/manage-image.vue'),
+                meta: { requiresAuth: true },
+            },
+            {
                 path: 'manage-tag',
                 component: () => import('@/views/manage-tag.vue'),
                 meta: { requiresAuth: true },

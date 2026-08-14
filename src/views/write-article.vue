@@ -78,6 +78,27 @@
                 <el-button @click="insertSnippet('table')" link>表格</el-button>
                 <el-button @click="insertSnippet('math')" link>公式</el-button>
                 <el-button @click="insertSnippet('mermaid')" link>Mermaid</el-button>
+                <el-dropdown trigger="hover" @command="handleImageInsertCommand">
+                    <el-button link>
+                        导入图片<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item>
+                                <a
+                                    class="drawio-menu-link"
+                                    :href="DIAGRAMS_NET_URL"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    @click.stop
+                                >
+                                    在线画图
+                                </a>
+                            </el-dropdown-item>
+                            <el-dropdown-item command="image">导入本地图片</el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
                 <el-divider class="toolbar-divider" direction="vertical" />
                 <el-button @click="formatContent" link>
                     美化排版
@@ -85,11 +106,14 @@
                 <el-button @click="toggleCatalog" link :class="{ 'is-catalog-active': isCatalogVisible }">
                     目录
                 </el-button>
+                <el-button :loading="draftSaving" @click="saveDraft({ navigateAfterSave: true })">
+                    保存草稿
+                </el-button>
                 <el-button type="primary" @click="saveArticle">
                     <el-icon style="margin-right: 4px;">
                         <Promotion />
                     </el-icon>
-                    {{ id ? '保存修改' : '发布文章' }}
+                    {{ publishButtonText }}
                 </el-button>
             </div>
         </div>
@@ -157,20 +181,30 @@
                     <span class="drawer-header-title">{{ drawerTitle }}</span>
                 </div>
             </template>
-            <SubmitArticle :id="id" :title="title" :tag="tag" :displayContent="displayContent" :describe="describe"
-                @close="drawer = false">
+            <SubmitArticle :id="id" :draftID="draftID" :title="title" :tag="tag" :displayContent="displayContent" :describe="describe"
+                @close="drawer = false" @draft-saved="handleDraftSaved">
             </SubmitArticle>
         </el-drawer>
+
+        <input
+            ref="imageInput"
+            class="image-file-input"
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.drawio.svg,image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+            @change="handleImageImport"
+        />
     </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElNotification } from 'element-plus';
 import { Promotion, Monitor, Iphone, Cellphone, ArrowDown } from '@element-plus/icons-vue';
 import SubmitArticle from '../components/submit-article.vue';
 import ArticlePreview from '../components/article-preview.vue';
 import emitter from '../utils/event-bus.js';
+import _axios from '../utils/axios';
 import { beautifyMarkdown } from '../utils/format-text';
 import { extractHeadingsFromHtml, type CatalogHeading } from '../utils/markdown';
 import {
@@ -183,6 +217,8 @@ import {
 // ============================================================
 // 状态
 // ============================================================
+const router = useRouter();
+const route = useRoute();
 const mode = ref<'edit' | 'split' | 'preview'>('split');
 const device = ref<'pc' | 'phone' | 'tablet'>('pc');
 const deviceId = ref<string>(DEFAULT_DEVICE_ID);
@@ -202,16 +238,25 @@ watch(device, (next) => {
 });
 
 const id = ref('');
+const draftID = ref('');
 const tag = ref('');
 const title = ref('');
 const describe = ref('');
 const displayContent = ref('');
+const draftSaving = ref(false);
 
 const editor = ref<HTMLTextAreaElement | null>(null);
 const previewPane = ref<HTMLElement | null>(null);
+const imageInput = ref<HTMLInputElement | null>(null);
 
 const charCount = computed(() => displayContent.value.length);
 const lineCount = computed(() => displayContent.value ? displayContent.value.split('\n').length : 0);
+
+const DIAGRAMS_NET_URL = 'https://app.diagrams.net/';
+const ARTICLE_IMAGE_MAX_SIZE = 10 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
+
+type ImageInsertCommand = 'image';
 
 // ============================================================
 // 预览目录：复用 portal-web 的 HTML heading 提取规则
@@ -594,25 +639,25 @@ function handlePaste(e: ClipboardEvent) {
 }
 
 // ============================================================
-// 编辑器键盘增强：Tab 缩进 + Ctrl/Cmd+S 发布
+// 编辑器键盘增强：Tab 缩进 + Ctrl/Cmd+S 保存草稿
 // ============================================================
 function handleKeydown(e: KeyboardEvent) {
     const ta = editor.value;
     if (!ta) return;
 
-    // Ctrl/Cmd + S：发布
+    // Ctrl/Cmd + S：保存草稿
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        saveArticle();
+        saveDraft();
         return;
     }
 
-    // Tab：插入 4 空格（不切换焦点）
+    // Tab：插入真实 tab 字符（显示宽度由 CSS tab-size 控制，不切换焦点）
     if (e.key === 'Tab') {
         e.preventDefault();
         const start = ta.selectionStart;
         const end = ta.selectionEnd;
-        const indent = '    ';
+        const indent = '\t';
         // 多行选区：行首批量加/减缩进
         if (start !== end) {
             const value = ta.value;
@@ -629,7 +674,7 @@ function handleKeydown(e: KeyboardEvent) {
             });
             return;
         }
-        // 单光标：插入 4 空格
+        // 单光标：插入真实 tab 字符
         if (e.shiftKey) return;
         const value = ta.value;
         const newValue = value.slice(0, start) + indent + value.slice(end);
@@ -827,6 +872,100 @@ function insertText(snippet: string) {
 }
 
 // ============================================================
+// 图片插入：在线画图使用原生链接新开标签页，导入图片上传后插入 URL
+// ============================================================
+function handleImageInsertCommand(command: ImageInsertCommand) {
+    if (command === 'image') {
+        imageInput.value?.click();
+    }
+}
+
+async function handleImageImport(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    const validationMessage = validateArticleImageFile(file);
+    if (validationMessage) {
+        ElNotification({
+            title: '文件不支持',
+            message: validationMessage,
+            type: 'warning',
+            duration: 2600,
+        });
+        return;
+    }
+
+    try {
+        const uploaded = await uploadArticleImage(file);
+        insertUploadedImage(uploaded.url, file.name.replace(/\.[^.]+$/i, ''));
+        ElNotification({
+            title: '图片已上传',
+            message: '已插入图片链接，文章正文不会再保存 base64 数据',
+            type: 'success',
+            duration: 2400,
+        });
+    } catch (error: any) {
+        ElNotification({
+            title: '上传失败',
+            message: error?.message ?? '图片上传失败，请稍后重试',
+            type: 'error',
+            duration: 2600,
+        });
+    }
+}
+
+function validateArticleImageFile(file: File): string {
+    const fileName = file.name || '';
+    const lowerName = fileName.toLowerCase();
+    const isSVG = lowerName.endsWith('.svg') || lowerName.endsWith('.drawio.svg') || file.type === 'image/svg+xml';
+    if (!isSVG && !SUPPORTED_IMAGE_TYPES.has(file.type)) {
+        return '仅支持 PNG、JPG、WebP、GIF、SVG 或 .drawio.svg';
+    }
+    if (file.size <= 0) {
+        return '图片文件为空';
+    }
+    if (file.size > ARTICLE_IMAGE_MAX_SIZE) {
+        return '图片大小不能超过 10MB';
+    }
+    return '';
+}
+
+async function uploadArticleImage(file: File): Promise<{ url: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await _axios.post('/admin/auth/article/image/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const { code, message, data } = response.data;
+    if (code !== 2000 || message !== '') {
+        throw new Error(message || '图片上传失败');
+    }
+    if (!data?.url) {
+        throw new Error('上传接口没有返回图片 URL');
+    }
+    return data;
+}
+
+function insertUploadedImage(url: string, title: string) {
+    const normalizedTitle = normalizeImageTitle(title);
+    insertText(`<img src="${escapeHtmlAttribute(url)}" alt="${escapeHtmlAttribute(normalizedTitle)}" />`);
+}
+
+function normalizeImageTitle(title: string): string {
+    return title.replace(/[\r\n\t]+/g, ' ').trim() || '图片';
+}
+
+function escapeHtmlAttribute(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// ============================================================
 // 编辑/预览滚动同步：标题锚点分段映射，缺少目录时回退到比例同步
 // ============================================================
 function syncEditorToPreview() {
@@ -871,7 +1010,8 @@ function handleEditorScroll() {
 // 编辑模式切换：从文章管理页带数据进来
 // ============================================================
 function updateArticle(data: any) {
-    id.value = data.id;
+    id.value = data.id || data.articleID || '';
+    draftID.value = data.draftID || '';
     tag.value = data.tag;
     title.value = data.title;
     displayContent.value = data.content;
@@ -882,10 +1022,93 @@ function updateArticle(data: any) {
 // 发布抽屉
 // ============================================================
 const drawer = ref(false);
-const drawerTitle = computed(() => (id.value ? '编辑文章' : '发布文章'));
+const drawerTitle = computed(() => {
+    if (draftID.value) return '发布草稿';
+    return id.value ? '编辑文章' : '发布文章';
+});
+const publishButtonText = computed(() => {
+    if (draftID.value) return '发布草稿';
+    return id.value ? '保存修改' : '发布文章';
+});
 
 function saveArticle() {
     drawer.value = true;
+}
+
+function handleDraftSaved(payload: { id: string; title: string; tag: string; describe: string }) {
+    draftID.value = payload.id || draftID.value;
+    title.value = payload.title;
+    tag.value = payload.tag;
+    describe.value = payload.describe;
+}
+
+type SaveDraftOptions = {
+    navigateAfterSave?: boolean;
+};
+
+const DEFAULT_AFTER_DRAFT_SAVE_PATH = '/home/manage-draft';
+
+function normalizeRedirectQuery(value: unknown): string {
+    if (Array.isArray(value)) {
+        return typeof value[0] === 'string' ? value[0] : '';
+    }
+    return typeof value === 'string' ? value : '';
+}
+
+function isAllowedRedirectPath(path: string): boolean {
+    return path === '/home/manage-article'
+        || path.startsWith('/home/manage-article?')
+        || path === '/home/manage-draft'
+        || path.startsWith('/home/manage-draft?')
+        || path === '/home/manage-tag'
+        || path.startsWith('/home/manage-tag?');
+}
+
+function resolveAfterDraftSavePath(): string {
+    const redirectPath = normalizeRedirectQuery(route.query.redirect);
+    return redirectPath && isAllowedRedirectPath(redirectPath)
+        ? redirectPath
+        : DEFAULT_AFTER_DRAFT_SAVE_PATH;
+}
+
+async function navigateAfterDraftSave(): Promise<void> {
+    await router.push(resolveAfterDraftSavePath()).catch(() => {
+        return router.push(DEFAULT_AFTER_DRAFT_SAVE_PATH).catch(() => { });
+    });
+}
+
+async function saveDraft(options: SaveDraftOptions = {}) {
+    if (draftSaving.value) return;
+    const userID = localStorage.getItem("userID");
+    if (!userID) { router.push('/').catch(() => { }); return; }
+
+    const payload = {
+        id: draftID.value,
+        articleID: id.value,
+        title: title.value.trim(),
+        tag: tag.value.trim(),
+        describe: describe.value.trim(),
+        content: displayContent.value,
+    };
+    draftSaving.value = true;
+    try {
+        const response = await _axios.post('/admin/auth/article/draft/save', payload);
+        const { code, message, data } = response.data;
+        if (code === 2000 && message === '') {
+            draftID.value = data?.id || draftID.value;
+            title.value = data?.title || payload.title;
+            ElNotification({ title: 'Success', message: '草稿已保存', type: 'success' });
+            if (options.navigateAfterSave) {
+                await navigateAfterDraftSave();
+            }
+        } else {
+            ElNotification({ title: 'Failed', message: message || '保存草稿失败', type: 'error' });
+        }
+    } catch (error: any) {
+        ElNotification({ title: 'Error', message: error?.message ?? String(error), type: 'error' });
+    } finally {
+        draftSaving.value = false;
+    }
 }
 
 // ============================================================
@@ -1127,6 +1350,7 @@ onBeforeUnmount(() => {
     line-height: 1.7;
     color: #2c3e50;
     tab-size: 4;
+    -moz-tab-size: 4;
     background: #fff;
     box-sizing: border-box;
 }
@@ -1256,5 +1480,14 @@ onBeforeUnmount(() => {
 
 .publish-drawer :deep(.el-drawer__body) {
     overflow: hidden;
+}
+
+.image-file-input {
+    display: none;
+}
+
+.drawio-menu-link {
+    color: inherit;
+    text-decoration: none;
 }
 </style>

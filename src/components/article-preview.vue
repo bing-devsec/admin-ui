@@ -259,6 +259,18 @@ function fallbackCopy(text: string): boolean {
     return ok;
 }
 
+function normalizeCopiedCodeText(text: string): string {
+    return text.replace(/\u200B/g, '');
+}
+
+function getCodePlainText(codeEl: HTMLElement): string {
+    const lineNodes = Array.from(codeEl.querySelectorAll<HTMLElement>('.ssr-code-line'));
+    if (lineNodes.length === 0) {
+        return normalizeCopiedCodeText(codeEl.textContent || '');
+    }
+    return lineNodes.map((line) => normalizeCopiedCodeText(line.textContent || '')).join('\n');
+}
+
 function bindCodeCopy(scope: Document | HTMLElement) {
     scope.addEventListener('click', (event: Event) => {
         const target = event.target as HTMLElement | null;
@@ -269,7 +281,7 @@ function bindCodeCopy(scope: Document | HTMLElement) {
         if (!block) return;
         const codeEl = block.querySelector('pre code') as HTMLElement | null;
         if (!codeEl) return;
-        const plain = (codeEl.textContent || '').replace(/\u200B/g, '');
+        const plain = getCodePlainText(codeEl);
         const onSuccess = () => {
             setCopyState(btn, 'success');
             window.setTimeout(() => setCopyState(btn, null), 1500);
@@ -488,6 +500,9 @@ function handleCodeFullscreenClick(event: Event, scope: Document) {
     const lang = block.getAttribute('data-lang') || 'text';
     const lineCount = block.getAttribute('data-line-count') || '';
     const codeInnerHtml = codeEl.innerHTML;
+    const infoHtml = lineCount
+        ? `<span class="ssr-code-fs-lang">${lang}</span><span class="ssr-code-fs-sep" aria-hidden="true">·</span><span class="ssr-code-fs-meta">${lineCount} 行</span>`
+        : `<span class="ssr-code-fs-lang">${lang}</span>`;
 
     // 蒙层挂在外层 document.body
     const overlay = document.createElement('div');
@@ -499,7 +514,7 @@ function handleCodeFullscreenClick(event: Event, scope: Document) {
     overlay.innerHTML = `
         <div class="ssr-code-fs-stage">
             <div class="ssr-code-fs-head">
-                <span class="ssr-code-fs-info">${lang}${lineCount ? ` · ${lineCount} 行` : ''}</span>
+                <span class="ssr-code-fs-info">${infoHtml}</span>
                 <div class="ssr-code-fs-actions">
                     <button class="ssr-code-fs-copy ssr-code-copy ssr-code-iconbtn" type="button" aria-label="复制代码" title="复制">
                         <svg class="ssr-code-copy-icon ssr-code-copy-icon--default" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -537,7 +552,7 @@ function handleCodeFullscreenClick(event: Event, scope: Document) {
         copyBtn.addEventListener('click', () => {
             const codeNode = overlay.querySelector('.ssr-code-fs-pre code') as HTMLElement | null;
             if (!codeNode) return;
-            const plain = (codeNode.textContent || '').replace(/\u200B/g, '');
+            const plain = getCodePlainText(codeNode);
             const onSuccess = () => {
                 copyBtn.setAttribute('data-copy-state', 'success');
                 window.setTimeout(() => copyBtn.removeAttribute('data-copy-state'), 1500);

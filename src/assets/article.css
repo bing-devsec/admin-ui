@@ -261,9 +261,9 @@
 .article-body-ssr blockquote {
     padding: 0.6em 1em;
     margin: 1em 0;
-    background-color: #e4f8fb;
-    border-left: 5px solid #4dd0e1;
-    color: #555;
+    background-color: #f6f8fb;
+    border-left: 4px solid #c5d1df;
+    color: #4b5563;
     border-radius: 0 4px 4px 0;
 }
 
@@ -373,10 +373,18 @@
 .article-body-ssr code {
     font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.92em;
-    background-color: #f3f4f6;
-    color: #c7254e;
+    background-color: #eef2f7;
+    color: #b42352;
     padding: 2px 6px;
     border-radius: 3px;
+}
+
+.article-body-ssr blockquote code,
+.article-body-ssr .md-admonition code {
+    background-color: transparent;
+    color: #b42352;
+    padding: 0 2px;
+    border-radius: 0;
 }
 
 /* ============================================================
@@ -406,7 +414,7 @@
 .article-body-ssr .ssr-code-lang {
     letter-spacing: 0.5px;
     font-weight: 600;
-    font-size: clamp(13px, 12px + 0.2vw, 14px);
+    font-size: 14px;
     line-height: 1.2;
 }
 
@@ -684,10 +692,41 @@
 }
 
 .ssr-code-fs-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
     letter-spacing: 0.5px;
     font-weight: 600;
     font-size: 14px;
-    line-height: 1.2;
+    line-height: 1;
+    font-family:
+        -apple-system, BlinkMacSystemFont,
+        "MiSans", "HarmonyOS Sans", "OPPOSans",
+        "PingFang SC", "Hiragino Sans GB",
+        "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.ssr-code-fs-lang,
+.ssr-code-fs-sep,
+.ssr-code-fs-meta {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+.ssr-code-fs-lang {
+    font-weight: 700;
+}
+
+.ssr-code-fs-sep {
+    color: #6f7783;
+    font-weight: 600;
+}
+
+.ssr-code-fs-meta {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
 .ssr-code-fs-actions {
@@ -1236,6 +1275,11 @@
     margin: 1em auto;
     border: 0;
     border-radius: 4px;
+}
+
+.article-body-ssr img.article-img[src*=".svg"],
+.article-body-ssr img.article-img[src^="data:image/svg+xml"] {
+    border-radius: 0;
 }
 
 /* 分割线：使用极轻的浅灰，作为段落间的弱分隔，不抢正文视觉权重 */

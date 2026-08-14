@@ -52,7 +52,10 @@
             />
 
             <div class="form-footer">
-                <el-button :disabled="submitting" @click="onCancel">取消</el-button>
+                <el-button :disabled="submitting || draftSaving" @click="onCancel">取消</el-button>
+                <el-button v-if="!isDraftPublish" :loading="draftSaving" :disabled="submitting" @click="onSaveDraft">
+                    保存草稿
+                </el-button>
                 <el-button type="primary" :loading="submitting" @click="onSubmit">
                     {{ submitButtonText }}
                 </el-button>
@@ -73,6 +76,7 @@ const router = useRouter();
 const size = ref<"default" | "small" | "large">("default");
 const formRef = ref<FormInstance>();
 const submitting = ref(false);
+const draftSaving = ref(false);
 
 const article = reactive({
     title: "",
@@ -112,20 +116,36 @@ const describeRef = ref<any>(null);
 
 // DEFAULT_AFTER_SAVE_PATH 是保存文章后的默认兜底页面。
 const DEFAULT_AFTER_SAVE_PATH = "/home/manage-article";
+const DEFAULT_AFTER_DRAFT_SAVE_PATH = "/home/manage-draft";
 
-const props = defineProps<{ displayContent: string, id: string, title: string, tag: string, describe: string }>();
-const emit = defineEmits<{ (e: 'close'): void }>();
+const props = defineProps<{
+    displayContent: string;
+    id: string;
+    draftID: string;
+    title: string;
+    tag: string;
+    describe: string;
+}>();
+const emit = defineEmits<{
+    (e: 'close'): void;
+    (e: 'draft-saved', payload: { id: string; title: string; tag: string; describe: string }): void;
+}>();
 
 const isEdit = computed(() => !!props.id);
+const isDraftPublish = computed(() => !!props.draftID);
 const submitLoadingText = computed(() => (
-    isEdit.value
+    isDraftPublish.value
+        ? "正在发布草稿，请稍候"
+        : isEdit.value
         ? "正在保存修改并清理 CDN 缓存，请稍候"
         : "正在发布文章，请稍候"
 ));
 const submitButtonText = computed(() => {
     if (submitting.value) {
+        if (isDraftPublish.value) return "正在发布...";
         return isEdit.value ? "正在保存..." : "正在发布...";
     }
+    if (isDraftPublish.value) return "发布草稿";
     return isEdit.value ? "保存修改" : "发布";
 });
 
@@ -273,6 +293,8 @@ function normalizeRedirectQuery(value: unknown): string {
 function isAllowedRedirectPath(path: string): boolean {
     return path === "/home/manage-article"
         || path.startsWith("/home/manage-article?")
+        || path === "/home/manage-draft"
+        || path.startsWith("/home/manage-draft?")
         || path === "/home/manage-tag"
         || path.startsWith("/home/manage-tag?");
 }
@@ -292,6 +314,13 @@ function resolveAfterSavePath(oldTag: string, nextTag: string): string {
         return DEFAULT_AFTER_SAVE_PATH;
     }
     return redirectPath;
+}
+
+function resolveAfterDraftSavePath(): string {
+    const redirectPath = normalizeRedirectQuery(route.query.redirect);
+    return redirectPath && isAllowedRedirectPath(redirectPath)
+        ? redirectPath
+        : DEFAULT_AFTER_DRAFT_SAVE_PATH;
 }
 
 // navigateAfterSave 跳转失败时回落到默认文章管理页。
@@ -317,7 +346,7 @@ async function onSubmit() {
     const isNewTag = trimmedTag !== "" && !tagOptions.value.some(t => t.name === trimmedTag);
 
     const requestData = {
-        id: props.id,
+        id: props.draftID || props.id,
         title: article.title.trim(),
         tag: trimmedTag,
         content: props.displayContent,
@@ -339,15 +368,17 @@ async function onSubmit() {
     };
 
     submitting.value = true;
-    const request = requestData.id === ""
+    const request = props.draftID
+        ? _axios.post("/admin/auth/article/draft/publish", requestData)
+        : requestData.id === ""
         ? _axios.post("/admin/auth/article/add", requestData)
         : _axios.put("/admin/auth/article/update", requestData);
 
     request
         .then(async (response: { data: { code: number; message: string; data: any } }) => {
             const { code, message } = response.data;
-            const successMsg = isEdit.value ? "修改文章成功" : "添加文章成功";
-            const failureMsg = isEdit.value ? "修改文章失败" : "添加文章失败";
+            const successMsg = isDraftPublish.value ? "发布草稿成功" : isEdit.value ? "修改文章成功" : "添加文章成功";
+            const failureMsg = isDraftPublish.value ? "发布草稿失败" : isEdit.value ? "修改文章失败" : "添加文章失败";
             if (code === 2000 && message === "") {
                 ElNotification({ title: "Success", message: successMsg, type: "success" });
                 notifyNewTag();
@@ -364,6 +395,45 @@ async function onSubmit() {
         .finally(() => {
             submitting.value = false;
         });
+}
+
+async function onSaveDraft() {
+    if (draftSaving.value || submitting.value) return;
+    const userID = localStorage.getItem("userID");
+    if (!userID) { router.push('/').catch(() => { }); return; }
+
+    const payload = {
+        id: props.draftID,
+        articleID: props.id,
+        title: article.title.trim(),
+        tag: article.tag.trim(),
+        describe: article.describe.trim(),
+        content: props.displayContent,
+    };
+    draftSaving.value = true;
+    try {
+        const response = await _axios.post("/admin/auth/article/draft/save", payload);
+        const { code, message, data } = response.data;
+        if (code === 2000 && message === "") {
+            const nextDraftID = data?.id || props.draftID;
+            const nextTitle = data?.title || payload.title;
+            emit('draft-saved', {
+                id: nextDraftID,
+                title: nextTitle,
+                tag: payload.tag,
+                describe: payload.describe,
+            });
+            ElNotification({ title: "Success", message: "草稿已保存", type: "success" });
+            emit('close');
+            await navigateAfterSave(resolveAfterDraftSavePath());
+        } else {
+            ElNotification({ title: "Failed", message: message || "保存草稿失败", type: "error" });
+        }
+    } catch (error: any) {
+        ElNotification({ title: "Error", message: error?.message ?? String(error), type: "error" });
+    } finally {
+        draftSaving.value = false;
+    }
 }
 </script>
 
