@@ -55,6 +55,7 @@ const props = withDefaults(
 const emit = defineEmits<{
     (event: 'rendered-html', html: string): void;
     (event: 'preview-scroll'): void;
+    (event: 'preview-layout-change'): void;
 }>();
 
 const root = ref<HTMLElement | null>(null);
@@ -122,7 +123,8 @@ async function runRender(src: string) {
     emit('rendered-html', result);
     await nextTick();
     if (props.device === 'pc') {
-        void renderMermaidBlocks(root.value);
+        bindPreviewLayoutWatch(root.value);
+        void renderMermaidBlocks(root.value).finally(schedulePreviewLayoutChange);
     } else {
         // 移动端：iframe 通过 srcdoc 重建（响应 iframeSrcdoc 变化），onload 后再绑定
     }
@@ -1013,6 +1015,60 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
 let unbindOuterFullscreen: (() => void) | null = null;
 let unbindInnerFullscreen: (() => void) | null = null;
 let unbindIframeScroll: (() => void) | null = null;
+let contentResizeObserver: ResizeObserver | null = null;
+let unbindImageLayoutListeners: (() => void) | null = null;
+let previewLayoutChangeRaf = 0;
+
+function schedulePreviewLayoutChange() {
+    if (previewLayoutChangeRaf) return;
+    previewLayoutChangeRaf = requestAnimationFrame(() => {
+        previewLayoutChangeRaf = 0;
+        emit('preview-layout-change');
+    });
+}
+
+function cleanupPreviewLayoutWatch() {
+    if (contentResizeObserver) {
+        contentResizeObserver.disconnect();
+        contentResizeObserver = null;
+    }
+    unbindImageLayoutListeners?.();
+    unbindImageLayoutListeners = null;
+}
+
+function getLayoutRoot(scope?: HTMLElement | Document | null): HTMLElement | null {
+    const target = scope || (props.device === 'pc' ? root.value : iframeRef.value?.contentDocument || null);
+    if (!target) return null;
+    if ('documentElement' in target) {
+        return target.getElementById('ssr-root') || target.body || null;
+    }
+    return target;
+}
+
+function bindPreviewLayoutWatch(scope?: HTMLElement | Document | null) {
+    cleanupPreviewLayoutWatch();
+    const layoutRoot = getLayoutRoot(scope);
+    if (!layoutRoot) return;
+
+    if (typeof ResizeObserver !== 'undefined') {
+        contentResizeObserver = new ResizeObserver(schedulePreviewLayoutChange);
+        contentResizeObserver.observe(layoutRoot);
+    }
+
+    const cleanupFns: Array<() => void> = [];
+    layoutRoot.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+        if (img.complete) return;
+        const done = () => schedulePreviewLayoutChange();
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+        cleanupFns.push(() => {
+            img.removeEventListener('load', done);
+            img.removeEventListener('error', done);
+        });
+    });
+    unbindImageLayoutListeners = () => cleanupFns.forEach((cleanup) => cleanup());
+    schedulePreviewLayoutChange();
+}
 
 function bindIframeScroll(doc: Document) {
     unbindIframeScroll?.();
@@ -1038,7 +1094,8 @@ function handleIframeLoad() {
     if (!doc) return;
     bindCodeCopy(doc);
     bindCodeToggle(doc);
-    void renderMermaidBlocks(doc.body);
+    bindPreviewLayoutWatch(doc);
+    void renderMermaidBlocks(doc.body).finally(schedulePreviewLayoutChange);
     // 先解绑上一次（iframe 重载场景）
     unbindInnerFullscreen?.();
     unbindInnerFullscreen = bindFullscreenButtons(doc);
@@ -1143,12 +1200,22 @@ watch(
         unbindInnerFullscreen = null;
         unbindIframeScroll?.();
         unbindIframeScroll = null;
+        cleanupPreviewLayoutWatch();
         disposeTableOverflowObserver();
+        void nextTick().then(() => {
+            if (props.device === 'pc') {
+                bindPreviewLayoutWatch(root.value);
+            }
+        });
     }
 );
 
 onBeforeUnmount(() => {
     if (timer) window.clearTimeout(timer);
+    if (previewLayoutChangeRaf) {
+        cancelAnimationFrame(previewLayoutChangeRaf);
+        previewLayoutChangeRaf = 0;
+    }
     if (resizeObserver) {
         resizeObserver.disconnect();
         resizeObserver = null;
@@ -1163,6 +1230,7 @@ onBeforeUnmount(() => {
     unbindInnerFullscreen = null;
     unbindIframeScroll?.();
     unbindIframeScroll = null;
+    cleanupPreviewLayoutWatch();
     // 关闭可能仍存在的全屏蒙层
     closeCodeFullscreen();
     closeTableFullscreen();

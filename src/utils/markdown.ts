@@ -336,6 +336,52 @@ function nextPlaceholderToken(env: RenderEnv): string {
     return `${env.pendingCounter.toString(36)}-${env.placeholderSalt}`;
 }
 
+function getTokenSourceLine(token: { map: [number, number] | null }): number | null {
+    return token.map && Number.isFinite(token.map[0]) ? token.map[0] : null;
+}
+
+function sourceLineAttr(token: { map: [number, number] | null }): string {
+    const line = getTokenSourceLine(token);
+    return line === null ? '' : ` data-md-line="${line}"`;
+}
+
+function annotateRawHtmlImages(html: string, line: number): string {
+    return html.replace(/<img\b(?![^>]*\bdata-md-line\s*=)([^>]*)>/gi, `<img data-md-line="${line}"$1>`);
+}
+
+md.core.ruler.after('inline', 'source_line_anchors', (state) => {
+    state.tokens.forEach((token) => {
+        const line = getTokenSourceLine(token);
+        if (line === null) return;
+
+        if (
+            token.nesting === 1 &&
+            (
+                token.type === 'paragraph_open' ||
+                token.type === 'heading_open' ||
+                token.type === 'blockquote_open' ||
+                token.type === 'bullet_list_open' ||
+                token.type === 'ordered_list_open' ||
+                token.type === 'list_item_open'
+            )
+        ) {
+            token.attrSet('data-md-line', String(line));
+        } else if (token.type === 'hr') {
+            token.attrSet('data-md-line', String(line));
+        } else if (token.type === 'html_block') {
+            token.content = annotateRawHtmlImages(token.content, line);
+        }
+
+        token.children?.forEach((child) => {
+            if (child.type === 'image') {
+                child.attrSet('data-md-line', String(line));
+            } else if (child.type === 'html_inline') {
+                child.content = annotateRawHtmlImages(child.content, line);
+            }
+        });
+    });
+});
+
 function tokenizedLinesToHtml(linesTokens: ThemedToken[][]): string | null {
     if (linesTokens.length === 0) {
         return '<span class="ssr-code-line">\u200B</span>';
@@ -478,7 +524,7 @@ md.renderer.rules.fence = function (tokens, idx, _options, env: RenderEnv) {
             '<path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>' +
             '</svg>';
         return (
-            `<div class="mermaid-block" data-mermaid-rendered="false">` +
+            `<div class="mermaid-block" data-mermaid-rendered="false"${sourceLineAttr(token)}>` +
             `<button class="mermaid-fullscreen-btn" type="button" aria-label="全屏查看图表" title="全屏">${fsIcon}</button>` +
             `<div class="mermaid-content">` +
             `<pre class="mermaid-source">${escaped}</pre>` +
@@ -507,6 +553,10 @@ md.renderer.rules.fence = function (tokens, idx, _options, env: RenderEnv) {
         `class="ssr-code-block"`,
         `data-lang="${safeLang}"`,
     ];
+    const sourceLine = getTokenSourceLine(token);
+    if (sourceLine !== null) {
+        blockAttrs.push(`data-md-line="${sourceLine}"`);
+    }
     if (collapsible) {
         blockAttrs.push('data-collapsible="true"');
         blockAttrs.push('data-collapsed="true"');
@@ -570,7 +620,8 @@ md.renderer.rules.image = function (tokens, idx) {
     const src = token.attrGet('src') || '';
     const title = token.attrGet('title') || '';
     const alt = token.content || '';
-    return `<img class="article-img article-img-zoomable" src="${src}" alt="${alt}"${title ? ` title="${title}"` : ''} loading="lazy" decoding="async" style="width: 100%; height: auto; max-width: 100%; display: block;">`;
+    const lineAttr = token.attrGet('data-md-line');
+    return `<img class="article-img article-img-zoomable" src="${src}" alt="${alt}"${title ? ` title="${title}"` : ''}${lineAttr ? ` data-md-line="${lineAttr}"` : ''} loading="lazy" decoding="async" style="width: 100%; height: auto; max-width: 100%; display: block;">`;
 };
 
 // 表格：外包横向滚动壳 + 全屏按钮
@@ -581,13 +632,14 @@ const defaultTableClose = md.renderer.rules.table_close || function (tokens, idx
     return self.renderToken(tokens, idx, options);
 };
 md.renderer.rules.table_open = function (tokens, idx, options, env, self) {
+    const token = tokens[idx];
     const fsBtn =
         '<button class="ssr-table-fs-btn" type="button" aria-label="全屏查看表格" title="全屏">' +
         '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">' +
         '<path fill="currentColor" d="M5 5h6v2H7v4H5V5zm14 0v6h-2V7h-4V5h6zM5 19v-6h2v4h4v2H5zm14 0h-6v-2h4v-4h2v6z"/>' +
         '</svg>' +
         '</button>';
-    return `<div class="ssr-table-wrap">${fsBtn}<div class="ssr-table-scroll">${defaultTableOpen(tokens, idx, options, env, self)}`;
+    return `<div class="ssr-table-wrap"${sourceLineAttr(token)}>${fsBtn}<div class="ssr-table-scroll">${defaultTableOpen(tokens, idx, options, env, self)}`;
 };
 md.renderer.rules.table_close = function (tokens, idx, options, env, self) {
     return `${defaultTableClose(tokens, idx, options, env, self)}</div></div>`;

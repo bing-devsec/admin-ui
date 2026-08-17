@@ -146,6 +146,7 @@
                         :device-height="currentDevice.height"
                         @rendered-html="handlePreviewRenderedHtml"
                         @preview-scroll="handlePreviewScroll"
+                        @preview-layout-change="handlePreviewLayoutChange"
                     />
                 </div>
 
@@ -327,12 +328,24 @@ type HeadingSourceAnchor = {
     level: number;
     text: string;
 };
+type PreviewSourceAnchor = {
+    line: number;
+    previewTop: number;
+};
+type EditorAnchorCache = {
+    signature: string;
+    tops: Map<number, number>;
+};
 
 const SCROLL_SYNC_OFFSET = 12;
 const USER_SYNC_LOCK_MS = 90;
 const CATALOG_SYNC_LOCK_MS = 720;
 let editorToPreviewRaf = 0;
 let previewToEditorRaf = 0;
+let previewLayoutRaf = 0;
+let lastUserScrollSource: ScrollTargetName = 'editor';
+let editorAnchorMirror: HTMLDivElement | null = null;
+let editorAnchorCache: EditorAnchorCache | null = null;
 const programmaticScrollTargets = new Set<ScrollTargetName>();
 const programmaticScrollTimers: Partial<Record<ScrollTargetName, number>> = {};
 
@@ -382,6 +395,159 @@ function getActivePreviewScroller(): HTMLElement | null {
 function getEditorLineHeight(ta: HTMLTextAreaElement): number {
     const lineHeight = Number.parseFloat(window.getComputedStyle(ta).lineHeight);
     return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 24;
+}
+
+function getTextHash(text: string): string {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+        hash = (Math.imul(hash, 31) + text.charCodeAt(i)) | 0;
+    }
+    return hash.toString(36);
+}
+
+function getLineStartOffsets(text: string): number[] {
+    const starts = [0];
+    for (let index = 0; index < text.length; index++) {
+        if (text.charCodeAt(index) === 10) {
+            starts.push(index + 1);
+        }
+    }
+    return starts;
+}
+
+function normalizeSourceLines(lines: number[], maxLine: number): number[] {
+    return Array.from(new Set([0, ...lines]))
+        .filter((line) => Number.isFinite(line) && line >= 0 && line <= maxLine)
+        .sort((a, b) => a - b);
+}
+
+function getEditorAnchorMirror(): HTMLDivElement | null {
+    if (editorAnchorMirror) return editorAnchorMirror;
+    if (typeof document === 'undefined' || !document.body) return null;
+
+    const mirror = document.createElement('div');
+    mirror.setAttribute('aria-hidden', 'true');
+    mirror.style.position = 'fixed';
+    mirror.style.left = '-10000px';
+    mirror.style.top = '0';
+    mirror.style.visibility = 'hidden';
+    mirror.style.pointerEvents = 'none';
+    mirror.style.zIndex = '-1';
+    mirror.style.contain = 'layout style paint';
+    document.body.appendChild(mirror);
+    editorAnchorMirror = mirror;
+    return mirror;
+}
+
+function syncMirrorTextareaStyle(mirror: HTMLDivElement, ta: HTMLTextAreaElement): string {
+    const style = window.getComputedStyle(ta);
+    mirror.style.boxSizing = 'border-box';
+    mirror.style.width = `${ta.clientWidth}px`;
+    mirror.style.height = 'auto';
+    mirror.style.minHeight = '0';
+    mirror.style.overflow = 'hidden';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.overflowWrap = 'break-word';
+    mirror.style.wordBreak = 'break-word';
+    mirror.style.fontFamily = style.fontFamily;
+    mirror.style.fontSize = style.fontSize;
+    mirror.style.fontStyle = style.fontStyle;
+    mirror.style.fontVariant = style.fontVariant;
+    mirror.style.fontWeight = style.fontWeight;
+    mirror.style.letterSpacing = style.letterSpacing;
+    mirror.style.lineHeight = style.lineHeight;
+    mirror.style.textAlign = style.textAlign;
+    mirror.style.textIndent = style.textIndent;
+    mirror.style.textTransform = style.textTransform;
+    mirror.style.wordSpacing = style.wordSpacing;
+    mirror.style.paddingTop = style.paddingTop;
+    mirror.style.paddingRight = style.paddingRight;
+    mirror.style.paddingBottom = style.paddingBottom;
+    mirror.style.paddingLeft = style.paddingLeft;
+    mirror.style.border = '0';
+    mirror.style.setProperty('tab-size', style.getPropertyValue('tab-size') || '4');
+    mirror.style.setProperty('-moz-tab-size', style.getPropertyValue('-moz-tab-size') || '4');
+
+    return [
+        ta.clientWidth,
+        style.fontFamily,
+        style.fontSize,
+        style.fontStyle,
+        style.fontVariant,
+        style.fontWeight,
+        style.letterSpacing,
+        style.lineHeight,
+        style.textAlign,
+        style.textIndent,
+        style.wordSpacing,
+        style.paddingTop,
+        style.paddingRight,
+        style.paddingBottom,
+        style.paddingLeft,
+        style.getPropertyValue('tab-size'),
+    ].join('|');
+}
+
+function createEditorAnchorMarker(line: number): HTMLSpanElement {
+    const marker = document.createElement('span');
+    marker.dataset.mdLine = String(line);
+    marker.style.display = 'inline-block';
+    marker.style.width = '0';
+    marker.style.height = '0';
+    marker.style.overflow = 'hidden';
+    marker.textContent = '\u200b';
+    return marker;
+}
+
+function getEditorSourceAnchorTops(lines: number[], ta: HTMLTextAreaElement): Map<number, number> | null {
+    const mirror = getEditorAnchorMirror();
+    if (!mirror) return null;
+
+    const text = displayContent.value;
+    const lineStarts = getLineStartOffsets(text);
+    const maxLine = lineStarts.length - 1;
+    const normalizedLines = normalizeSourceLines(lines, maxLine);
+    const styleSignature = syncMirrorTextareaStyle(mirror, ta);
+    const signature = [
+        text.length,
+        getTextHash(text),
+        normalizedLines.join(','),
+        styleSignature,
+    ].join('::');
+
+    if (editorAnchorCache?.signature === signature) {
+        return editorAnchorCache.tops;
+    }
+
+    mirror.replaceChildren();
+    const markers = new Map<number, HTMLSpanElement>();
+    let cursor = 0;
+    normalizedLines.forEach((line) => {
+        const offset = lineStarts[line] ?? text.length;
+        if (offset > cursor) {
+            mirror.appendChild(document.createTextNode(text.slice(cursor, offset)));
+        }
+        const marker = createEditorAnchorMarker(line);
+        markers.set(line, marker);
+        mirror.appendChild(marker);
+        cursor = offset;
+    });
+
+    const paddingTop = Number.parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
+    const editorMax = getScrollMax(ta);
+    const tops = new Map<number, number>();
+    markers.forEach((marker, line) => {
+        tops.set(line, Math.min(Math.max(marker.offsetTop - paddingTop, 0), editorMax));
+    });
+
+    editorAnchorCache = { signature, tops };
+    return tops;
+}
+
+function getEditorSourceLineTop(line: number, ta = editor.value): number | null {
+    if (!ta) return null;
+    const tops = getEditorSourceAnchorTops([line], ta);
+    return tops?.get(line) ?? null;
 }
 
 function normalizeHeadingText(text: string): string {
@@ -447,17 +613,14 @@ function getPreviewHeadingTop(id: string, scroller = getActivePreviewScroller())
     if (device.value === 'pc') {
         const target = previewPane.value?.querySelector<HTMLElement>(`#${escapeCssId(id)}`);
         if (!target) return null;
-
-        const scrollerRect = scroller.getBoundingClientRect();
-        const targetRect = target.getBoundingClientRect();
-        return scroller.scrollTop + (targetRect.top - scrollerRect.top) - SCROLL_SYNC_OFFSET;
+        return getPreviewElementTop(target, scroller);
     }
 
     const doc = getPreviewIframe()?.contentDocument;
     const target = doc?.getElementById(id);
     if (!target) return null;
 
-    return target.getBoundingClientRect().top + scroller.scrollTop - SCROLL_SYNC_OFFSET;
+    return getPreviewElementTop(target, scroller);
 }
 
 function getEditorHeadingTop(id: string): number | null {
@@ -465,7 +628,49 @@ function getEditorHeadingTop(id: string): number | null {
     if (!ta) return null;
     const line = getMarkdownHeadingLineForCatalogId(id);
     if (line === null) return null;
-    return line * getEditorLineHeight(ta);
+    return getEditorSourceLineTop(line, ta);
+}
+
+function getPreviewElementTop(target: HTMLElement, scroller: HTMLElement): number {
+    if (device.value === 'pc') {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        return scroller.scrollTop + (targetRect.top - scrollerRect.top) - SCROLL_SYNC_OFFSET;
+    }
+
+    return target.getBoundingClientRect().top + scroller.scrollTop - SCROLL_SYNC_OFFSET;
+}
+
+function getPreviewSourceAnchorRoot(): ParentNode | null {
+    if (device.value === 'pc') {
+        return previewPane.value;
+    }
+
+    const doc = getPreviewIframe()?.contentDocument;
+    return doc?.getElementById('ssr-root') || doc?.body || null;
+}
+
+function getPreviewSourceAnchors(previewScroller: HTMLElement): PreviewSourceAnchor[] {
+    const root = getPreviewSourceAnchorRoot();
+    if (!root) return [];
+
+    const byLine = new Map<number, number>();
+    root.querySelectorAll<HTMLElement>('[data-md-line]').forEach((el) => {
+        const rawLine = el.dataset.mdLine;
+        if (!rawLine) return;
+        const line = Number.parseInt(rawLine, 10);
+        if (!Number.isFinite(line) || line < 0) return;
+
+        const previewTop = getPreviewElementTop(el, previewScroller);
+        const existingTop = byLine.get(line);
+        if (existingTop === undefined || previewTop < existingTop) {
+            byLine.set(line, previewTop);
+        }
+    });
+
+    return Array.from(byLine.entries())
+        .map(([line, previewTop]) => ({ line, previewTop }))
+        .sort((a, b) => a.line - b.line);
 }
 
 function interpolateScrollTop(sourceTop: number, anchors: Array<{ source: number; target: number }>): number | null {
@@ -489,6 +694,44 @@ function interpolateScrollTop(sourceTop: number, anchors: Array<{ source: number
     return sortedAnchors[sortedAnchors.length - 1].target;
 }
 
+function mapScrollTopBySourceAnchors(from: 'editor' | 'preview'): number | null {
+    const ta = editor.value;
+    const previewScroller = getActivePreviewScroller();
+    if (!ta || !previewScroller) return null;
+
+    const editorMax = getScrollMax(ta);
+    const previewMax = getScrollMax(previewScroller);
+    if (editorMax <= 0 || previewMax <= 0) return from === 'editor' ? 0 : null;
+
+    const previewAnchors = getPreviewSourceAnchors(previewScroller);
+    if (!previewAnchors.length) return null;
+    const editorAnchorTops = getEditorSourceAnchorTops(previewAnchors.map((anchor) => anchor.line), ta);
+    if (!editorAnchorTops) return null;
+
+    const pairs: Array<{ editorTop: number; previewTop: number }> = [
+        { editorTop: 0, previewTop: 0 },
+    ];
+
+    previewAnchors.forEach((anchor) => {
+        const editorTop = editorAnchorTops.get(anchor.line);
+        if (editorTop === undefined) return;
+        pairs.push({
+            editorTop,
+            previewTop: Math.min(Math.max(anchor.previewTop, 0), previewMax),
+        });
+    });
+    pairs.push({ editorTop: editorMax, previewTop: previewMax });
+
+    const sourceTop = from === 'editor' ? ta.scrollTop : previewScroller.scrollTop;
+    const anchors = pairs.map((pair) =>
+        from === 'editor'
+            ? { source: pair.editorTop, target: pair.previewTop }
+            : { source: pair.previewTop, target: pair.editorTop }
+    );
+
+    return interpolateScrollTop(sourceTop, anchors);
+}
+
 function mapScrollTopByCatalogAnchors(from: 'editor' | 'preview'): number | null {
     const ta = editor.value;
     const previewScroller = getActivePreviewScroller();
@@ -505,11 +748,14 @@ function mapScrollTopByCatalogAnchors(from: 'editor' | 'preview'): number | null
     ];
 
     const count = Math.min(headings.length, sourceHeadings.length);
+    const editorAnchorTops = getEditorSourceAnchorTops(sourceHeadings.slice(0, count).map((heading) => heading.line), ta);
     for (let i = 0; i < count; i++) {
         const previewTop = getPreviewHeadingTop(headings[i].id, previewScroller);
         if (previewTop === null) continue;
+        const editorTop = editorAnchorTops?.get(sourceHeadings[i].line);
+        if (editorTop === undefined) continue;
         pairs.push({
-            editorTop: sourceHeadings[i].line * getEditorLineHeight(ta),
+            editorTop,
             previewTop,
         });
     }
@@ -568,6 +814,7 @@ function handlePreviewScroll() {
     }
     if (mode.value !== 'split') return;
     if (programmaticScrollTargets.has('preview')) return;
+    lastUserScrollSource = 'preview';
     schedulePreviewToEditorSync();
 }
 
@@ -966,12 +1213,12 @@ function escapeHtmlAttribute(text: string): string {
 }
 
 // ============================================================
-// 编辑/预览滚动同步：标题锚点分段映射，缺少目录时回退到比例同步
+// 编辑/预览滚动同步：源码行锚点优先，标题锚点兜底，最后才退回比例同步。
 // ============================================================
 function syncEditorToPreview() {
     const previewScroller = getActivePreviewScroller();
     if (!previewScroller) return;
-    const top = mapScrollTopByCatalogAnchors('editor') ?? mapScrollTopByRatio('editor');
+    const top = mapScrollTopBySourceAnchors('editor') ?? mapScrollTopByCatalogAnchors('editor') ?? mapScrollTopByRatio('editor');
     if (top === null) return;
     scrollElementTo(previewScroller, top, 'preview');
 }
@@ -979,7 +1226,7 @@ function syncEditorToPreview() {
 function syncPreviewToEditor() {
     const ta = editor.value;
     if (!ta) return;
-    const top = mapScrollTopByCatalogAnchors('preview') ?? mapScrollTopByRatio('preview');
+    const top = mapScrollTopBySourceAnchors('preview') ?? mapScrollTopByCatalogAnchors('preview') ?? mapScrollTopByRatio('preview');
     if (top === null) return;
     scrollElementTo(ta, top, 'editor');
 }
@@ -1003,7 +1250,24 @@ function schedulePreviewToEditorSync() {
 function handleEditorScroll() {
     if (mode.value !== 'split') return;
     if (programmaticScrollTargets.has('editor')) return;
+    lastUserScrollSource = 'editor';
     scheduleEditorToPreviewSync();
+}
+
+function handlePreviewLayoutChange() {
+    if (previewLayoutRaf) return;
+    previewLayoutRaf = requestAnimationFrame(() => {
+        previewLayoutRaf = 0;
+        if (isCatalogVisible.value) {
+            updateActiveCatalogId();
+        }
+        if (mode.value !== 'split') return;
+        if (lastUserScrollSource === 'preview') {
+            syncPreviewToEditor();
+        } else {
+            syncEditorToPreview();
+        }
+    });
 }
 
 // ============================================================
@@ -1152,6 +1416,10 @@ onBeforeUnmount(() => {
         cancelAnimationFrame(previewToEditorRaf);
         previewToEditorRaf = 0;
     }
+    if (previewLayoutRaf) {
+        cancelAnimationFrame(previewLayoutRaf);
+        previewLayoutRaf = 0;
+    }
     (Object.keys(programmaticScrollTimers) as ScrollTargetName[]).forEach((target) => {
         const timer = programmaticScrollTimers[target];
         if (timer) {
@@ -1160,6 +1428,9 @@ onBeforeUnmount(() => {
         }
     });
     programmaticScrollTargets.clear();
+    editorAnchorMirror?.remove();
+    editorAnchorMirror = null;
+    editorAnchorCache = null;
 });
 </script>
 
