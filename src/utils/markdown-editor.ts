@@ -452,10 +452,87 @@ function normalizeTableSize(value: number, min: number, max: number): number {
 
 export function formatMarkdownListSelection(source: string, ordered: boolean): string {
     const lines = (source || '列表项').split('\n');
-    return lines.map((line, index) => {
+    let orderedIndex = 1;
+    return lines.map((line) => {
+        if (!line.trim()) return line;
         const text = line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, '');
-        return ordered ? `${index + 1}. ${text}` : `- ${text}`;
+        return ordered ? `${orderedIndex++}. ${text}` : `- ${text}`;
     }).join('\n');
+}
+
+function trimSelectedLineBoundaryWhitespace(value: string, start: number, end: number): { start: number; end: number } {
+    const selected = value.slice(start, end);
+    if (!selected) return { start, end };
+
+    const leadingWhitespace = selected.match(/^[\t \r\n]+/)?.[0] ?? '';
+    const trailingWhitespace = selected.match(/[\t \r\n]+$/)?.[0] ?? '';
+    const nextStart = /[\r\n]/.test(leadingWhitespace) ? start + leadingWhitespace.length : start;
+    const nextEnd = /[\r\n]/.test(trailingWhitespace) ? end - trailingWhitespace.length : end;
+
+    return nextStart < nextEnd ? { start: nextStart, end: nextEnd } : { start, end };
+}
+
+function getBacktickMarker(source: string, minLength: number): string {
+    const longestBacktickRun = Math.max(0, ...Array.from(source.matchAll(/`+/g), (match) => match[0].length));
+    return '`'.repeat(Math.max(minLength, longestBacktickRun + 1));
+}
+
+export function getMarkdownInlineCodeEdit(
+    value: string,
+    start: number,
+    end: number,
+    fallbackText = 'code'
+): TextRangeEdit {
+    ({ start, end } = trimSelectedLineBoundaryWhitespace(value, start, end));
+    const text = value.slice(start, end) || fallbackText;
+    const marker = getBacktickMarker(text, 1);
+    const needsPadding = text.startsWith('`') || text.endsWith('`') ||
+        (text.startsWith(' ') && text.endsWith(' ') && Boolean(text.trim()));
+    const padding = needsPadding ? ' ' : '';
+    const insert = `${marker}${padding}${text}${padding}${marker}`;
+    const selectionStart = start + marker.length + padding.length;
+
+    return {
+        start,
+        end,
+        insert,
+        selectionStart,
+        selectionEnd: selectionStart + text.length,
+    };
+}
+
+export function getMarkdownCodeBlockEdit(
+    value: string,
+    start: number,
+    end: number,
+    language = 'bash'
+): TextRangeEdit | null {
+    const selected = value.slice(start, end);
+    if (!selected) return null;
+
+    const leadingLineBreaks = selected.match(/^(?:\r?\n)+/)?.[0] ?? '';
+    const trailingLineBreaks = selected.match(/(?:\r?\n)+$/)?.[0] ?? '';
+    start += leadingLineBreaks.length;
+    end -= trailingLineBreaks.length;
+    if (start >= end) return null;
+
+    const text = value.slice(start, end);
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    const prefix = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+    const suffix = after && !after.startsWith('\n\n') ? (after.startsWith('\n') ? '\n' : '\n\n') : '';
+    const fence = getBacktickMarker(text, 3);
+    const openingFence = `${fence}${language.trim()}`;
+    const insert = `${prefix}${openingFence}\n${text}\n${fence}${suffix}`;
+    const selectionStart = start + prefix.length + openingFence.length + 1;
+
+    return {
+        start,
+        end,
+        insert,
+        selectionStart,
+        selectionEnd: selectionStart + text.length,
+    };
 }
 
 export function getTextSearchMatches(value: string, query: string, options: TextSearchOptions = {}): TextSearchMatch[] {
@@ -555,6 +632,7 @@ function isOnlyPunctuationOrSpace(value: string): boolean {
 }
 
 export function getBoldToggleEdit(value: string, start: number, end: number, fallbackText = '加粗文本'): TextRangeEdit {
+    ({ start, end } = trimSelectedLineBoundaryWhitespace(value, start, end));
     const selected = value.slice(start, end);
     if (selected) {
         const hasBoldWrapperAroundSelection = start >= 2 && value.slice(start - 2, start) === '**' && value.slice(end, end + 2) === '**';

@@ -37,6 +37,7 @@
                                 :key="preset.kind"
                                 :command="preset.kind"
                                 :class="{ 'toolbar-default-item': toolbarDefaults.list === preset.kind }"
+                                @pointermove.prevent
                             >
                                 {{ preset.label }}
                             </el-dropdown-item>
@@ -54,6 +55,7 @@
                                 :key="preset.kind"
                                 :command="preset.kind"
                                 :class="{ 'toolbar-default-item': toolbarDefaults.admonition === preset.kind }"
+                                @pointermove.prevent
                             >
                                 <span class="admonition-menu-emoji">{{ preset.emoji }}</span>
                                 {{ preset.label }}
@@ -72,6 +74,7 @@
                                 :key="preset.kind"
                                 :command="preset.kind"
                                 :class="{ 'toolbar-default-item': toolbarDefaults.code === preset.kind }"
+                                @pointermove.prevent
                             >
                                 {{ preset.label }}
                             </el-dropdown-item>
@@ -111,10 +114,18 @@
                     </el-button>
                     <template #dropdown>
                         <el-dropdown-menu>
-                            <el-dropdown-item command="drawio" :class="{ 'toolbar-default-item': toolbarDefaults.image === 'drawio' }">
+                            <el-dropdown-item
+                                command="drawio"
+                                :class="{ 'toolbar-default-item': toolbarDefaults.image === 'drawio' }"
+                                @pointermove.prevent
+                            >
                                 在线画图
                             </el-dropdown-item>
-                            <el-dropdown-item command="image" :class="{ 'toolbar-default-item': toolbarDefaults.image === 'image' }">
+                            <el-dropdown-item
+                                command="image"
+                                :class="{ 'toolbar-default-item': toolbarDefaults.image === 'image' }"
+                                @pointermove.prevent
+                            >
                                 导入本地图片
                             </el-dropdown-item>
                         </el-dropdown-menu>
@@ -292,6 +303,8 @@ import {
     getContinuationIndentFromPreviousList,
     getCurrentLineInfo,
     getIndentedCodeFencePasteText,
+    getMarkdownCodeBlockEdit,
+    getMarkdownInlineCodeEdit,
     getNextListMarker,
     getTextSearchMatches,
     isCursorInsideCodeFence,
@@ -531,6 +544,9 @@ function scrollElementTo(
         top: clampScrollTop(el, top),
         behavior,
     });
+    if (target === 'editor') {
+        scheduleEditorLineHighlightUpdate();
+    }
 }
 
 function isContentInsertionScrollLocked(): boolean {
@@ -573,6 +589,18 @@ function rememberEditorSelection() {
     };
 }
 
+function setEditorSelectionAndRefresh(
+    ta: HTMLTextAreaElement,
+    start: number,
+    end = start,
+    direction: EditorSelectionDirection = 'none'
+) {
+    focusEditorWithoutScroll(ta);
+    ta.setSelectionRange(start, end, direction);
+    rememberEditorSelection();
+    scheduleEditorLineHighlightUpdate();
+}
+
 function hasEditorTextSelectionSnapshot(): boolean {
     return Boolean(editorSelectionSnapshot && editorSelectionSnapshot.start !== editorSelectionSnapshot.end);
 }
@@ -596,9 +624,7 @@ function restoreEditorSelectionFromToolbar(force = false) {
         if (!ta || mode.value === 'preview') return;
         if (!force && document.activeElement === ta) return;
 
-        focusEditorWithoutScroll(ta);
-        ta.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
-        scheduleEditorLineHighlightUpdate();
+        setEditorSelectionAndRefresh(ta, snapshot.start, snapshot.end, snapshot.direction);
     });
 }
 
@@ -613,6 +639,13 @@ function handleDocumentToolbarHover(e: MouseEvent) {
     restoreEditorSelectionFromToolbar();
 }
 
+function handleDocumentToolbarFocusIn(e: FocusEvent) {
+    if (!hasEditorTextSelectionSnapshot()) return;
+    if (!isToolbarSelectionTarget(e.target) || isToolbarEditableTarget(e.target)) return;
+    if (!document.querySelector('.write-toolbar:hover, .write-toolbar-popper:hover')) return;
+    restoreEditorSelectionFromToolbar(true);
+}
+
 function handleDocumentToolbarMouseDown(e: MouseEvent) {
     if (!isToolbarSelectionTarget(e.target) || isToolbarEditableTarget(e.target)) return;
     if (!hasEditorTextSelectionSnapshot()) return;
@@ -623,6 +656,9 @@ function handleDocumentToolbarMouseDown(e: MouseEvent) {
 function setElementScrollTop(el: HTMLElement, top: number, target: ScrollTargetName) {
     markProgrammaticScroll(target);
     el.scrollTop = clampScrollTop(el, top);
+    if (target === 'editor') {
+        scheduleEditorLineHighlightUpdate();
+    }
 }
 
 function preserveWriteScrollDuringInsertion(ta: HTMLTextAreaElement): () => void {
@@ -713,9 +749,10 @@ function syncMirrorTextareaStyle(mirror: HTMLDivElement, ta: HTMLTextAreaElement
     mirror.style.height = 'auto';
     mirror.style.minHeight = '0';
     mirror.style.overflow = 'hidden';
-    mirror.style.whiteSpace = 'pre-wrap';
-    mirror.style.overflowWrap = 'break-word';
-    mirror.style.wordBreak = 'break-word';
+    mirror.style.whiteSpace = style.whiteSpace || 'pre-wrap';
+    mirror.style.overflowWrap = style.overflowWrap === 'normal' ? 'break-word' : style.overflowWrap;
+    mirror.style.wordBreak = style.wordBreak;
+    mirror.style.setProperty('word-wrap', mirror.style.overflowWrap);
     mirror.style.fontFamily = style.fontFamily;
     mirror.style.fontSize = style.fontSize;
     mirror.style.fontStyle = style.fontStyle;
@@ -744,6 +781,9 @@ function syncMirrorTextareaStyle(mirror: HTMLDivElement, ta: HTMLTextAreaElement
         style.fontWeight,
         style.letterSpacing,
         style.lineHeight,
+        style.whiteSpace,
+        mirror.style.overflowWrap,
+        style.wordBreak,
         style.textAlign,
         style.textIndent,
         style.wordSpacing,
@@ -959,11 +999,8 @@ function selectFindMatch(index: number) {
     if (!ta || !match) return;
 
     currentFindIndex.value = index;
-    focusEditorWithoutScroll(ta);
-    ta.setSelectionRange(match.start, match.end);
+    setEditorSelectionAndRefresh(ta, match.start, match.end);
     scrollEditorOffsetIntoView(ta, match.start);
-    rememberEditorSelection();
-    scheduleEditorLineHighlightUpdate();
 }
 
 function goToFindMatch(direction: FindDirection) {
@@ -1022,11 +1059,8 @@ function replaceCurrentFindMatch() {
 
             const selectionStart = Math.min(match.start, displayContent.value.length);
             const selectionEnd = Math.min(selectionStart + replacement.length, displayContent.value.length);
-            focusEditorWithoutScroll(ta);
-            ta.setSelectionRange(selectionStart, selectionEnd);
+            setEditorSelectionAndRefresh(ta, selectionStart, selectionEnd);
             scrollEditorOffsetIntoView(ta, selectionStart);
-            rememberEditorSelection();
-            scheduleEditorLineHighlightUpdate();
         });
     });
 }
@@ -1056,11 +1090,8 @@ function replaceAllFindMatches() {
         requestAnimationFrame(() => {
             const selectionStart = Math.min(result.selectionStart, displayContent.value.length);
             const selectionEnd = Math.min(result.selectionEnd, displayContent.value.length);
-            focusEditorWithoutScroll(ta);
-            ta.setSelectionRange(selectionStart, selectionEnd);
+            setEditorSelectionAndRefresh(ta, selectionStart, selectionEnd);
             scrollEditorOffsetIntoView(ta, selectionStart);
-            rememberEditorSelection();
-            scheduleEditorLineHighlightUpdate();
         });
     });
 }
@@ -1470,9 +1501,7 @@ function renumberOrderedListAroundOffset(ta: HTMLTextAreaElement, offset = ta.se
 
     displayContent.value = result.value;
     requestAnimationFrame(() => {
-        focusEditorWithoutScroll(ta);
-        ta.setSelectionRange(result.selectionStart, result.selectionEnd);
-        rememberEditorSelection();
+        setEditorSelectionAndRefresh(ta, result.selectionStart, result.selectionEnd);
     });
     return true;
 }
@@ -1486,9 +1515,7 @@ function scheduleOrderedListRenumber(ta: HTMLTextAreaElement, offset = ta.select
 function applyMarkdownListIndentMove(ta: HTMLTextAreaElement, result: MarkdownListIndentMoveResult): boolean {
     displayContent.value = result.value;
     requestAnimationFrame(() => {
-        focusEditorWithoutScroll(ta);
-        ta.setSelectionRange(result.nextCaret, result.nextCaret);
-        rememberEditorSelection();
+        setEditorSelectionAndRefresh(ta, result.nextCaret);
         if (result.movedLineWasOrdered) {
             result.renumberOffsets.forEach((renumberOffset) => {
                 renumberOrderedListAroundOffset(ta, renumberOffset);
@@ -1530,10 +1557,7 @@ function replaceEditorRange(
     }
 
     requestAnimationFrame(() => {
-        focusEditorWithoutScroll(ta);
-        ta.setSelectionRange(nextSelectionStart, nextSelectionEnd);
-        rememberEditorSelection();
-        scheduleEditorLineHighlightUpdate();
+        setEditorSelectionAndRefresh(ta, nextSelectionStart, nextSelectionEnd);
     });
 }
 
@@ -1681,9 +1705,7 @@ function handleKeydown(e: KeyboardEvent) {
             const newValue = value.slice(0, lineStart) + next + value.slice(end);
             displayContent.value = newValue;
             requestAnimationFrame(() => {
-                ta.selectionStart = lineStart;
-                ta.selectionEnd = lineStart + next.length;
-                rememberEditorSelection();
+                setEditorSelectionAndRefresh(ta, lineStart, lineStart + next.length);
             });
             return;
         }
@@ -1693,8 +1715,7 @@ function handleKeydown(e: KeyboardEvent) {
         const newValue = value.slice(0, start) + indent + value.slice(end);
         displayContent.value = newValue;
         requestAnimationFrame(() => {
-            ta.selectionStart = ta.selectionEnd = start + indent.length;
-            rememberEditorSelection();
+            setEditorSelectionAndRefresh(ta, start + indent.length);
         });
     }
 }
@@ -1840,7 +1861,7 @@ function handleAdmonitionPresetCommand(kind: AdmonitionKind) {
 
 function insertCode(format: CodeFormat) {
     if (format === 'code-block') {
-        insertSnippet('codeBlock');
+        applyCodeBlockFormat();
         return;
     }
     applyInlineCodeFormat();
@@ -1880,9 +1901,7 @@ function replaceSelection(insert: string, selectionStart?: number, selectionEnd?
     }
 
     requestAnimationFrame(() => {
-        focusEditorWithoutScroll(ta);
-        ta.setSelectionRange(nextSelectionStart, nextSelectionEnd);
-        rememberEditorSelection();
+        setEditorSelectionAndRefresh(ta, nextSelectionStart, nextSelectionEnd);
     });
 }
 
@@ -1906,9 +1925,24 @@ function applyInlineCodeFormat() {
     }
 
     const { start, end } = getEditorSelectionRange(ta);
-    const selected = ta.value.slice(start, end);
-    const text = selected || 'code';
-    replaceSelection(`\`${text}\``, start + 1, start + 1 + text.length);
+    const edit = getMarkdownInlineCodeEdit(ta.value, start, end);
+    replaceEditorRange(ta, edit.start, edit.end, edit.insert, edit.selectionStart, edit.selectionEnd);
+}
+
+function applyCodeBlockFormat() {
+    const ta = editor.value;
+    if (!ta || ta.selectionStart === ta.selectionEnd) {
+        insertSnippet('codeBlock');
+        return;
+    }
+
+    const edit = getMarkdownCodeBlockEdit(ta.value, ta.selectionStart, ta.selectionEnd);
+    if (!edit) {
+        insertSnippet('codeBlock');
+        return;
+    }
+
+    replaceEditorRange(ta, edit.start, edit.end, edit.insert, edit.selectionStart, edit.selectionEnd);
 }
 
 function applyListFormat(ordered: boolean) {
@@ -1969,9 +2003,7 @@ function insertText(snippet: string) {
     const caret = start + insert.length;
     requestAnimationFrame(() => {
         restoreScroll();
-        focusEditorWithoutScroll(ta);
-        ta.setSelectionRange(caret, caret);
-        rememberEditorSelection();
+        setEditorSelectionAndRefresh(ta, caret);
         scheduleInsertionScrollRestore(restoreScroll);
     });
 }
@@ -2287,12 +2319,14 @@ function formatContent() {
 onMounted(() => {
     emitter.on('updateArticle', updateArticle);
     document.addEventListener('mouseover', handleDocumentToolbarHover, true);
+    document.addEventListener('focusin', handleDocumentToolbarFocusIn, true);
     document.addEventListener('mousedown', handleDocumentToolbarMouseDown, true);
 });
 
 onBeforeUnmount(() => {
     emitter.off('updateArticle', updateArticle);
     document.removeEventListener('mouseover', handleDocumentToolbarHover, true);
+    document.removeEventListener('focusin', handleDocumentToolbarFocusIn, true);
     document.removeEventListener('mousedown', handleDocumentToolbarMouseDown, true);
     if (editorToPreviewRaf) {
         cancelAnimationFrame(editorToPreviewRaf);
