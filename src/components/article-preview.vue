@@ -203,7 +203,8 @@ ${cssLinks.value}
 <div class="article-body-ssr" id="ssr-root">${html.value || ''}</div>
 <scr` + `ipt>
   // srcdoc iframe 下，<a href="#fn1"> 等锚点会因为 base URL 回退到父页面而触发整页导航。
-  // 这里拦截所有以 # 开头的链接，自己用 window.scrollTo 实现 iframe 内的页内跳转。
+	  // 这里拦截所有以 # 开头的链接，自己用 window.scrollTo 实现 iframe 内的页内跳转；
+	  // 非页内链接一律新标签页打开，避免后台写作页被当前 iframe 导航顶掉。
   // 注意不能用 scrollIntoView：浏览器会沿祖先链触发外层 admin-ui 的滚动调整，
   // 当 iframe 内部不需要滚动时（body 高度 <= 视口），父页面会把 iframe 整体往上顶。
   document.addEventListener('click', function (e) {
@@ -226,6 +227,11 @@ ${cssLinks.value}
           }
           return;
         }
+	        if (href && !/^(javascript|data|vbscript):/i.test(href)) {
+	          e.preventDefault();
+	          window.open(t.href || href, '_blank', 'noopener,noreferrer');
+	          return;
+	        }
       }
       t = t.parentNode;
     }
@@ -1124,16 +1130,29 @@ function findScrollableAncestor(el: HTMLElement | null): HTMLElement | null {
     return null;
 }
 
-function handleFootnoteClick(event: Event) {
+function isUnsafeHref(href: string): boolean {
+    return /^(?:javascript|data|vbscript):/i.test(href.trim());
+}
+
+function openPreviewLinkInNewTab(event: Event, anchor: HTMLAnchorElement, href: string) {
+    if (isUnsafeHref(href)) return;
+    event.preventDefault();
+    window.open(anchor.href || href, '_blank', 'noopener,noreferrer');
+}
+
+function handlePreviewLinkClick(event: Event) {
     const t = event.target as HTMLElement | null;
     if (!t) return;
     const a = t.closest('a') as HTMLAnchorElement | null;
     if (!a) return;
-    const isRef = !!a.parentElement?.classList.contains('footnote-ref');
-    const isBackref = a.classList.contains('footnote-backref');
-    if (!isRef && !isBackref) return;
+
     const href = a.getAttribute('href') || '';
-    if (!href.startsWith('#')) return;
+    if (!href) return;
+    if (!href.startsWith('#')) {
+        openPreviewLinkInNewTab(event, a, href);
+        return;
+    }
+
     let targetEl: HTMLElement | null = null;
     try {
         targetEl = document.querySelector(href) as HTMLElement | null;
@@ -1166,8 +1185,8 @@ onMounted(() => {
         bindCodeCopy(root.value);
         bindCodeToggle(root.value);
         // PC 模式：拦截脚注 [^1] / ↩ 跳转，避免浏览器把 #fnX 写到 URL 与触发祖先链滚动；
-        // 自定义平滑滚动到目标，保持 URL 干净。
-        root.value.addEventListener('click', handleFootnoteClick);
+        // 自定义平滑滚动到目标，保持 URL 干净；普通外链强制新标签页打开，避免写作页被顶掉。
+        root.value.addEventListener('click', handlePreviewLinkClick);
     }
     // 全屏按钮：PC 模式下，root 在外层 document 内，监听挂在外层 document
     unbindOuterFullscreen = bindFullscreenButtons(document);
@@ -1221,8 +1240,8 @@ onBeforeUnmount(() => {
         resizeObserver = null;
     }
     window.removeEventListener('resize', recalcScale);
-    // 解绑 PC 模式脚注 click 监听
-    if (root.value) root.value.removeEventListener('click', handleFootnoteClick);
+    // 解绑 PC 模式链接 click 监听
+    if (root.value) root.value.removeEventListener('click', handlePreviewLinkClick);
     // 解绑全屏按钮 click 监听
     unbindOuterFullscreen?.();
     unbindOuterFullscreen = null;

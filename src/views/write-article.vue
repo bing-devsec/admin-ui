@@ -1,7 +1,11 @@
 <template>
     <div class="write-shell">
         <!-- 顶部工具条：模式切换 + 发布按钮 -->
-        <div class="write-toolbar">
+        <div
+            class="write-toolbar"
+            @mouseenter="restoreEditorSelectionFromToolbar(true)"
+            @mousedown.capture="handleToolbarMouseDown"
+        >
             <div class="toolbar-left">
                 <el-radio-group v-model="mode" size="default">
                     <el-radio-button value="edit">编辑</el-radio-button>
@@ -10,25 +14,21 @@
                 </el-radio-group>
                 <el-radio-group v-show="mode !== 'edit'" v-model="device" size="default" class="device-switch">
                     <el-radio-button value="pc">
-                        <el-icon><Monitor /></el-icon>
                         <span class="device-label">电脑</span>
                     </el-radio-button>
                     <el-radio-button value="tablet">
-                        <el-icon><Cellphone /></el-icon>
                         <span class="device-label">平板</span>
                     </el-radio-button>
                     <el-radio-button value="phone">
-                        <el-icon><Iphone /></el-icon>
                         <span class="device-label">手机</span>
                     </el-radio-button>
                 </el-radio-group>
                 <span class="toolbar-stat">{{ charCount }} 字 · {{ lineCount }} 行</span>
             </div>
             <div class="toolbar-right">
-                <el-button @click="applyMarkdownFormat('bold')" link>加粗</el-button>
-                <el-dropdown trigger="hover" @command="applyMarkdownFormat">
-                    <el-button link>
-                        列表<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                <el-dropdown trigger="hover" popper-class="write-toolbar-popper" @command="handleListPresetCommand">
+                    <el-button link :title="defaultListTitle" @click.stop="insertDefaultList">
+                        {{ defaultListPreset.label }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                         <el-dropdown-menu>
@@ -36,15 +36,16 @@
                                 v-for="preset in LIST_PRESETS"
                                 :key="preset.kind"
                                 :command="preset.kind"
+                                :class="{ 'toolbar-default-item': toolbarDefaults.list === preset.kind }"
                             >
                                 {{ preset.label }}
                             </el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
-                <el-dropdown trigger="hover" @command="insertAdmonition">
-                    <el-button link>
-                        提示块<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                <el-dropdown trigger="hover" popper-class="write-toolbar-popper" @command="handleAdmonitionPresetCommand">
+                    <el-button link :title="defaultAdmonitionTitle" @click.stop="insertDefaultAdmonition">
+                        {{ defaultAdmonitionPreset.label }}块<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                         <el-dropdown-menu>
@@ -52,6 +53,7 @@
                                 v-for="preset in ADMONITION_PRESETS"
                                 :key="preset.kind"
                                 :command="preset.kind"
+                                :class="{ 'toolbar-default-item': toolbarDefaults.admonition === preset.kind }"
                             >
                                 <span class="admonition-menu-emoji">{{ preset.emoji }}</span>
                                 {{ preset.label }}
@@ -59,9 +61,9 @@
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
-                <el-dropdown trigger="hover" @command="insertCode">
-                    <el-button link>
-                        代码块<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                <el-dropdown trigger="hover" popper-class="write-toolbar-popper" @command="handleCodePresetCommand">
+                    <el-button link :title="defaultCodeTitle" @click.stop="insertDefaultCode">
+                        {{ defaultCodePreset.label }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                         <el-dropdown-menu>
@@ -69,37 +71,59 @@
                                 v-for="preset in CODE_PRESETS"
                                 :key="preset.kind"
                                 :command="preset.kind"
+                                :class="{ 'toolbar-default-item': toolbarDefaults.code === preset.kind }"
                             >
                                 {{ preset.label }}
                             </el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
-                <el-button @click="insertSnippet('table')" link>表格</el-button>
+                <el-popover
+                    v-model:visible="tablePickerVisible"
+                    placement="bottom"
+                    trigger="click"
+                    :width="220"
+                    popper-class="write-toolbar-popper table-picker-popper"
+                >
+                    <template #reference>
+                        <el-button link>表格</el-button>
+                    </template>
+                    <div class="table-picker">
+                        <div class="table-picker-row">
+                            <span class="table-picker-label">数据行</span>
+                            <el-input-number v-model="tableRows" :min="1" :max="20" :step="1" size="small" controls-position="right" />
+                        </div>
+                        <div class="table-picker-row">
+                            <span class="table-picker-label">列数</span>
+                            <el-input-number v-model="tableCols" :min="1" :max="10" :step="1" size="small" controls-position="right" />
+                        </div>
+                        <div class="table-picker-actions">
+                            <el-button size="small" @click="tablePickerVisible = false">取消</el-button>
+                            <el-button size="small" type="primary" @click="insertTable">插入</el-button>
+                        </div>
+                    </div>
+                </el-popover>
                 <el-button @click="insertSnippet('math')" link>公式</el-button>
                 <el-button @click="insertSnippet('mermaid')" link>Mermaid</el-button>
-                <el-dropdown trigger="hover" @command="handleImageInsertCommand">
-                    <el-button link>
-                        导入图片<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                <el-dropdown trigger="hover" popper-class="write-toolbar-popper" @command="handleImageInsertCommand">
+                    <el-button link :title="defaultImageTitle" @click.stop="insertDefaultImage">
+                        {{ defaultImageOption.label }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                         <el-dropdown-menu>
-                            <el-dropdown-item>
-                                <a
-                                    class="drawio-menu-link"
-                                    :href="DIAGRAMS_NET_URL"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    @click.stop
-                                >
-                                    在线画图
-                                </a>
+                            <el-dropdown-item command="drawio" :class="{ 'toolbar-default-item': toolbarDefaults.image === 'drawio' }">
+                                在线画图
                             </el-dropdown-item>
-                            <el-dropdown-item command="image">导入本地图片</el-dropdown-item>
+                            <el-dropdown-item command="image" :class="{ 'toolbar-default-item': toolbarDefaults.image === 'image' }">
+                                导入本地图片
+                            </el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
                 <el-divider class="toolbar-divider" direction="vertical" />
+                <el-button link title="⌘/Ctrl+F 查找，⌘/Ctrl+H 替换" @click="openFindPanel('find')">
+                    查找
+                </el-button>
                 <el-button @click="formatContent" link>
                     美化排版
                 </el-button>
@@ -118,17 +142,68 @@
             </div>
         </div>
 
+        <section v-show="findPanelVisible" class="find-replace-bar" aria-label="查找和替换" @keydown.esc.prevent="closeFindPanel">
+            <div class="find-replace-row">
+                <span class="find-replace-label">查找</span>
+                <el-input
+                    ref="findInput"
+                    v-model="findQuery"
+                    class="find-replace-input"
+                    size="small"
+                    clearable
+                    placeholder="输入关键词"
+                    @input="handleFindQueryInput"
+                    @keydown.enter.prevent="handleFindEnter"
+                    @keydown.esc.prevent="closeFindPanel"
+                />
+                <span class="find-replace-status" aria-live="polite">{{ findStatusText }}</span>
+                <el-button size="small" :disabled="!hasFindMatches" @click="goToFindMatch('prev')">上一个</el-button>
+                <el-button size="small" :disabled="!hasFindMatches" @click="goToFindMatch('next')">下一个</el-button>
+                <el-checkbox v-model="findMatchCase" size="small" @change="handleFindQueryInput">区分大小写</el-checkbox>
+                <el-button size="small" link class="find-replace-toggle" @click="toggleReplaceRow">
+                    {{ findReplaceExpanded ? '折叠' : '替换' }}
+                </el-button>
+                <el-button size="small" link @click="closeFindPanel">关闭</el-button>
+            </div>
+            <div v-show="findReplaceExpanded" class="find-replace-row">
+                <span class="find-replace-label">替换</span>
+                <el-input
+                    ref="replaceInput"
+                    v-model="replaceQuery"
+                    class="find-replace-input"
+                    size="small"
+                    clearable
+                    placeholder="替换为"
+                    @keydown.enter.prevent="replaceCurrentFindMatch"
+                    @keydown.esc.prevent="closeFindPanel"
+                />
+                <el-button size="small" :disabled="!hasFindMatches" @click="replaceCurrentFindMatch">替换</el-button>
+                <el-button size="small" type="primary" plain :disabled="!hasFindMatches" @click="replaceAllFindMatches">全部替换</el-button>
+            </div>
+        </section>
+
         <!-- 主体：编辑器 + 预览（按 mode 切换显隐） -->
         <div class="write-body" :data-mode="mode">
             <div v-show="mode !== 'preview'" class="write-pane write-edit">
+                <div
+                    v-show="isEditorLineHighlightVisible"
+                    class="editor-current-line"
+                    :style="editorLineHighlightStyle"
+                ></div>
                 <textarea
                     ref="editor"
                     v-model="displayContent"
                     class="md-textarea"
                     spellcheck="false"
                     placeholder="开始撰写你的文章…&#10;&#10;支持：标题、列表、代码块（含语言标识）、表格、引用、提示块（!!! tips/info/warning/error/success/thinking/example/summary）、KaTeX 公式（$...$ / $$...$$）、Mermaid 图表"
+                    @input="handleEditorInput"
                     @paste="handlePaste"
                     @keydown="handleKeydown"
+                    @keyup="handleEditorKeyup"
+                    @click="handleEditorClick"
+                    @select="rememberEditorSelection"
+                    @focus="handleEditorFocus"
+                    @blur="handleEditorBlur"
                     @scroll="handleEditorScroll"
                 ></textarea>
             </div>
@@ -201,13 +276,33 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElNotification } from 'element-plus';
-import { Promotion, Monitor, Iphone, Cellphone, ArrowDown } from '@element-plus/icons-vue';
+import { Promotion, ArrowDown } from '@element-plus/icons-vue';
 import SubmitArticle from '../components/submit-article.vue';
 import ArticlePreview from '../components/article-preview.vue';
 import emitter from '../utils/event-bus.js';
 import _axios from '../utils/axios';
 import { beautifyMarkdown } from '../utils/format-text';
 import { extractHeadingsFromHtml, type CatalogHeading } from '../utils/markdown';
+import {
+    applyBlockInsertionIndent,
+    createMarkdownTable,
+    formatMarkdownListSelection,
+    getBlockInsertionIndent,
+    getBoldToggleEdit,
+    getContinuationIndentFromPreviousList,
+    getCurrentLineInfo,
+    getIndentedCodeFencePasteText,
+    getNextListMarker,
+    getTextSearchMatches,
+    isCursorInsideCodeFence,
+    moveMarkdownListItemIndent,
+    parseMarkdownListLine,
+    parseMarkdownOrderedListLine,
+    replaceAllTextSearchMatches,
+    renumberOrderedList,
+    type MarkdownListIndentMoveResult,
+    type TextSearchMatch,
+} from '../utils/markdown-editor';
 import {
     DEFAULT_DEVICE_ID,
     DEFAULT_DEVICE_BY_CATEGORY,
@@ -249,15 +344,49 @@ const draftSaving = ref(false);
 const editor = ref<HTMLTextAreaElement | null>(null);
 const previewPane = ref<HTMLElement | null>(null);
 const imageInput = ref<HTMLInputElement | null>(null);
+const tablePickerVisible = ref(false);
+const tableRows = ref(3);
+const tableCols = ref(3);
+const findInput = ref<{ focus: () => void; select?: () => void } | null>(null);
+const replaceInput = ref<{ focus: () => void; select?: () => void } | null>(null);
+const findPanelVisible = ref(false);
+const findReplaceExpanded = ref(false);
+const findQuery = ref('');
+const replaceQuery = ref('');
+const findMatchCase = ref(false);
+const currentFindIndex = ref(-1);
+const isEditorLineHighlightVisible = ref(false);
+const editorLineHighlightStyle = ref<Record<string, string>>({
+    height: '0px',
+    transform: 'translateY(0px)',
+});
 
 const charCount = computed(() => displayContent.value.length);
 const lineCount = computed(() => displayContent.value ? displayContent.value.split('\n').length : 0);
+const findMatches = computed<TextSearchMatch[]>(() => getTextSearchMatches(displayContent.value, findQuery.value, { matchCase: findMatchCase.value }));
+const hasFindMatches = computed(() => findMatches.value.length > 0);
+const findStatusText = computed(() => {
+    if (!findQuery.value) return '输入关键词';
+    if (!findMatches.value.length) return '无匹配';
+    if (currentFindIndex.value < 0) return `共 ${findMatches.value.length} 处`;
+    return `${currentFindIndex.value + 1}/${findMatches.value.length}`;
+});
+
+watch(findMatches, (matches) => {
+    if (!matches.length) {
+        currentFindIndex.value = -1;
+        return;
+    }
+    if (currentFindIndex.value >= matches.length) {
+        currentFindIndex.value = matches.length - 1;
+    }
+});
 
 const DIAGRAMS_NET_URL = 'https://app.diagrams.net/';
 const ARTICLE_IMAGE_MAX_SIZE = 10 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
 
-type ImageInsertCommand = 'image';
+type ImageInsertCommand = 'drawio' | 'image';
 
 // ============================================================
 // 预览目录：复用 portal-web 的 HTML heading 提取规则
@@ -284,6 +413,14 @@ watch(
 watch(device, () => {
     if (!isCatalogVisible.value) return;
     requestAnimationFrame(updateActiveCatalogId);
+});
+
+watch(mode, (next) => {
+    if (next === 'preview') {
+        isEditorLineHighlightVisible.value = false;
+        return;
+    }
+    scheduleEditorLineHighlightUpdate();
 });
 
 function handlePreviewRenderedHtml(html: string) {
@@ -340,14 +477,27 @@ type EditorAnchorCache = {
 const SCROLL_SYNC_OFFSET = 12;
 const USER_SYNC_LOCK_MS = 90;
 const CATALOG_SYNC_LOCK_MS = 720;
+const CONTENT_INSERTION_SCROLL_LOCK_MS = 900;
 let editorToPreviewRaf = 0;
 let previewToEditorRaf = 0;
 let previewLayoutRaf = 0;
+let editorLineHighlightRaf = 0;
 let lastUserScrollSource: ScrollTargetName = 'editor';
 let editorAnchorMirror: HTMLDivElement | null = null;
 let editorAnchorCache: EditorAnchorCache | null = null;
+let contentInsertionScrollLockUntil = 0;
+let contentInsertionRestoreTimer = 0;
+let toolbarSelectionRestoreRaf = 0;
 const programmaticScrollTargets = new Set<ScrollTargetName>();
 const programmaticScrollTimers: Partial<Record<ScrollTargetName, number>> = {};
+
+type EditorSelectionDirection = 'forward' | 'backward' | 'none';
+type EditorSelectionSnapshot = {
+    start: number;
+    end: number;
+    direction: EditorSelectionDirection;
+};
+let editorSelectionSnapshot: EditorSelectionSnapshot | null = null;
 
 function markProgrammaticScroll(target: ScrollTargetName, duration = USER_SYNC_LOCK_MS) {
     programmaticScrollTargets.add(target);
@@ -383,6 +533,128 @@ function scrollElementTo(
     });
 }
 
+function isContentInsertionScrollLocked(): boolean {
+    return Date.now() < contentInsertionScrollLockUntil;
+}
+
+function lockContentInsertionScroll(duration = CONTENT_INSERTION_SCROLL_LOCK_MS) {
+    contentInsertionScrollLockUntil = Math.max(contentInsertionScrollLockUntil, Date.now() + duration);
+    markProgrammaticScroll('editor', duration);
+    markProgrammaticScroll('preview', duration);
+    if (editorToPreviewRaf) {
+        cancelAnimationFrame(editorToPreviewRaf);
+        editorToPreviewRaf = 0;
+    }
+    if (previewToEditorRaf) {
+        cancelAnimationFrame(previewToEditorRaf);
+        previewToEditorRaf = 0;
+    }
+}
+
+function focusEditorWithoutScroll(ta: HTMLTextAreaElement) {
+    ta.focus({ preventScroll: true });
+}
+
+function getEditorSelectionRange(ta: HTMLTextAreaElement): { start: number; end: number } {
+    return { start: ta.selectionStart, end: ta.selectionEnd };
+}
+
+function normalizeSelectionDirection(direction: string | null): EditorSelectionDirection {
+    return direction === 'forward' || direction === 'backward' ? direction : 'none';
+}
+
+function rememberEditorSelection() {
+    const ta = editor.value;
+    if (!ta) return;
+    editorSelectionSnapshot = {
+        start: ta.selectionStart,
+        end: ta.selectionEnd,
+        direction: normalizeSelectionDirection(ta.selectionDirection),
+    };
+}
+
+function hasEditorTextSelectionSnapshot(): boolean {
+    return Boolean(editorSelectionSnapshot && editorSelectionSnapshot.start !== editorSelectionSnapshot.end);
+}
+
+function isToolbarSelectionTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && Boolean(target.closest('.write-toolbar, .write-toolbar-popper'));
+}
+
+function isToolbarEditableTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && Boolean(target.closest('input, textarea, [contenteditable="true"], .el-input, .el-input-number'));
+}
+
+function restoreEditorSelectionFromToolbar(force = false) {
+    const snapshot = editorSelectionSnapshot;
+    if (!snapshot || snapshot.start === snapshot.end) return;
+    if (toolbarSelectionRestoreRaf) return;
+
+    toolbarSelectionRestoreRaf = requestAnimationFrame(() => {
+        toolbarSelectionRestoreRaf = 0;
+        const ta = editor.value;
+        if (!ta || mode.value === 'preview') return;
+        if (!force && document.activeElement === ta) return;
+
+        focusEditorWithoutScroll(ta);
+        ta.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
+        scheduleEditorLineHighlightUpdate();
+    });
+}
+
+function handleToolbarMouseDown(e: MouseEvent) {
+    if (!hasEditorTextSelectionSnapshot() || isToolbarEditableTarget(e.target)) return;
+    e.preventDefault();
+    restoreEditorSelectionFromToolbar(true);
+}
+
+function handleDocumentToolbarHover(e: MouseEvent) {
+    if (!isToolbarSelectionTarget(e.target) || isToolbarEditableTarget(e.target)) return;
+    restoreEditorSelectionFromToolbar();
+}
+
+function handleDocumentToolbarMouseDown(e: MouseEvent) {
+    if (!isToolbarSelectionTarget(e.target) || isToolbarEditableTarget(e.target)) return;
+    if (!hasEditorTextSelectionSnapshot()) return;
+    e.preventDefault();
+    restoreEditorSelectionFromToolbar(true);
+}
+
+function setElementScrollTop(el: HTMLElement, top: number, target: ScrollTargetName) {
+    markProgrammaticScroll(target);
+    el.scrollTop = clampScrollTop(el, top);
+}
+
+function preserveWriteScrollDuringInsertion(ta: HTMLTextAreaElement): () => void {
+    const editorTop = ta.scrollTop;
+    const previewTop = getActivePreviewScroller()?.scrollTop ?? null;
+    lockContentInsertionScroll();
+
+    return () => {
+        setElementScrollTop(ta, editorTop, 'editor');
+        const previewScroller = getActivePreviewScroller();
+        if (previewScroller && previewTop !== null) {
+            setElementScrollTop(previewScroller, previewTop, 'preview');
+        }
+    };
+}
+
+function scheduleInsertionScrollRestore(restoreScroll: () => void) {
+    restoreScroll();
+    if (contentInsertionRestoreTimer) {
+        window.clearTimeout(contentInsertionRestoreTimer);
+        contentInsertionRestoreTimer = 0;
+    }
+    requestAnimationFrame(() => {
+        restoreScroll();
+        requestAnimationFrame(restoreScroll);
+    });
+    contentInsertionRestoreTimer = window.setTimeout(() => {
+        restoreScroll();
+        contentInsertionRestoreTimer = 0;
+    }, 160);
+}
+
 function getActivePreviewScroller(): HTMLElement | null {
     if (device.value === 'pc') {
         return previewPane.value;
@@ -390,11 +662,6 @@ function getActivePreviewScroller(): HTMLElement | null {
 
     const doc = getPreviewIframe()?.contentDocument;
     return (doc?.scrollingElement as HTMLElement | null) || doc?.documentElement || previewPane.value;
-}
-
-function getEditorLineHeight(ta: HTMLTextAreaElement): number {
-    const lineHeight = Number.parseFloat(window.getComputedStyle(ta).lineHeight);
-    return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 24;
 }
 
 function getTextHash(text: string): string {
@@ -548,6 +815,299 @@ function getEditorSourceLineTop(line: number, ta = editor.value): number | null 
     if (!ta) return null;
     const tops = getEditorSourceAnchorTops([line], ta);
     return tops?.get(line) ?? null;
+}
+
+function getTextareaLineHeight(ta: HTMLTextAreaElement): number {
+    const style = window.getComputedStyle(ta);
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+
+    const fontSize = Number.parseFloat(style.fontSize);
+    return Number.isFinite(fontSize) && fontSize > 0 ? fontSize * 1.7 : 24;
+}
+
+function getEditorCaretVisualLine(ta: HTMLTextAreaElement): { top: number; height: number } | null {
+    const mirror = getEditorAnchorMirror();
+    if (!mirror) return null;
+
+    const lineHeight = getTextareaLineHeight(ta);
+    const caret = ta.selectionStart;
+    syncMirrorTextareaStyle(mirror, ta);
+
+    const marker = document.createElement('span');
+    marker.setAttribute('aria-hidden', 'true');
+    marker.style.display = 'inline-block';
+    marker.style.width = '0';
+    marker.style.height = `${lineHeight}px`;
+    marker.style.overflow = 'hidden';
+    marker.style.verticalAlign = 'top';
+    marker.textContent = '\u200b';
+
+    mirror.replaceChildren(document.createTextNode(ta.value.slice(0, caret)), marker);
+    return {
+        top: marker.offsetTop - ta.scrollTop,
+        height: lineHeight,
+    };
+}
+
+function getEditorOffsetTop(ta: HTMLTextAreaElement, offset: number): number | null {
+    const mirror = getEditorAnchorMirror();
+    if (!mirror) return null;
+
+    const safeOffset = Math.max(0, Math.min(offset, ta.value.length));
+    syncMirrorTextareaStyle(mirror, ta);
+
+    const marker = document.createElement('span');
+    marker.setAttribute('aria-hidden', 'true');
+    marker.style.display = 'inline-block';
+    marker.style.width = '0';
+    marker.style.height = `${getTextareaLineHeight(ta)}px`;
+    marker.style.overflow = 'hidden';
+    marker.style.verticalAlign = 'top';
+    marker.textContent = '\u200b';
+
+    mirror.replaceChildren(document.createTextNode(ta.value.slice(0, safeOffset)), marker);
+    const paddingTop = Number.parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
+    return Math.max(0, marker.offsetTop - paddingTop);
+}
+
+function scrollEditorOffsetIntoView(ta: HTMLTextAreaElement, offset: number) {
+    const top = getEditorOffsetTop(ta, offset);
+    if (top === null) return;
+
+    const lineHeight = getTextareaLineHeight(ta);
+    const targetTop = top - ta.clientHeight * 0.38 + lineHeight;
+    setElementScrollTop(ta, targetTop, 'editor');
+}
+
+type FindPanelTarget = 'find' | 'replace';
+type FindDirection = 'prev' | 'next';
+
+function getSelectedFindQuery(ta: HTMLTextAreaElement): string | null {
+    if (ta.selectionStart === ta.selectionEnd) return null;
+
+    const selected = ta.value.slice(ta.selectionStart, ta.selectionEnd);
+    if (!selected || /[\r\n]/.test(selected)) return null;
+    return selected;
+}
+
+async function openFindPanel(target: FindPanelTarget = 'find') {
+    if (mode.value === 'preview') {
+        mode.value = 'split';
+    }
+
+    const ta = editor.value;
+    const selected = ta ? getSelectedFindQuery(ta) : null;
+    if (selected !== null && selected !== findQuery.value) {
+        findQuery.value = selected;
+        currentFindIndex.value = -1;
+    }
+
+    findPanelVisible.value = true;
+    findReplaceExpanded.value = target === 'replace';
+    await nextTick();
+
+    const input = target === 'replace' ? replaceInput.value : findInput.value;
+    input?.focus();
+    if (target === 'find') {
+        input?.select?.();
+    }
+}
+
+async function closeFindPanel() {
+    findPanelVisible.value = false;
+    findReplaceExpanded.value = false;
+    currentFindIndex.value = -1;
+    await nextTick();
+
+    const ta = editor.value;
+    if (!ta || mode.value === 'preview') return;
+    focusEditorWithoutScroll(ta);
+    rememberEditorSelection();
+    scheduleEditorLineHighlightUpdate();
+}
+
+async function toggleReplaceRow() {
+    findReplaceExpanded.value = !findReplaceExpanded.value;
+    if (!findReplaceExpanded.value) return;
+
+    await nextTick();
+    replaceInput.value?.focus();
+}
+
+function handleFindQueryInput() {
+    currentFindIndex.value = -1;
+}
+
+function getInitialFindIndex(ta: HTMLTextAreaElement, matches: TextSearchMatch[], direction: FindDirection): number {
+    if (direction === 'prev') {
+        const cursor = Math.max(ta.selectionStart, ta.selectionEnd);
+        for (let index = matches.length - 1; index >= 0; index--) {
+            if (matches[index].start < cursor) return index;
+        }
+        return matches.length - 1;
+    }
+
+    const cursor = Math.min(ta.selectionStart, ta.selectionEnd);
+    const index = matches.findIndex((match) => match.start >= cursor);
+    return index === -1 ? 0 : index;
+}
+
+function selectFindMatch(index: number) {
+    const ta = editor.value;
+    const match = findMatches.value[index];
+    if (!ta || !match) return;
+
+    currentFindIndex.value = index;
+    focusEditorWithoutScroll(ta);
+    ta.setSelectionRange(match.start, match.end);
+    scrollEditorOffsetIntoView(ta, match.start);
+    rememberEditorSelection();
+    scheduleEditorLineHighlightUpdate();
+}
+
+function goToFindMatch(direction: FindDirection) {
+    if (mode.value === 'preview') {
+        mode.value = 'split';
+        nextTick(() => goToFindMatch(direction));
+        return;
+    }
+
+    const ta = editor.value;
+    const matches = findMatches.value;
+    if (!ta || !matches.length) return;
+
+    const currentIndex = currentFindIndex.value;
+    const nextIndex = currentIndex < 0 || currentIndex >= matches.length
+        ? getInitialFindIndex(ta, matches, direction)
+        : direction === 'next'
+            ? (currentIndex + 1) % matches.length
+            : (currentIndex - 1 + matches.length) % matches.length;
+
+    selectFindMatch(nextIndex);
+}
+
+function handleFindEnter(event?: KeyboardEvent) {
+    goToFindMatch(event?.shiftKey ? 'prev' : 'next');
+}
+
+function replaceCurrentFindMatch() {
+    if (mode.value === 'preview') {
+        mode.value = 'split';
+        nextTick(replaceCurrentFindMatch);
+        return;
+    }
+
+    const ta = editor.value;
+    const matches = findMatches.value;
+    if (!ta || !matches.length) return;
+
+    let index = currentFindIndex.value;
+    if (index < 0 || index >= matches.length) {
+        index = getInitialFindIndex(ta, matches, 'next');
+    }
+
+    const match = matches[index];
+    const replacement = replaceQuery.value;
+    displayContent.value = displayContent.value.slice(0, match.start) + replacement + displayContent.value.slice(match.end);
+    currentFindIndex.value = -1;
+
+    nextTick(() => {
+        requestAnimationFrame(() => {
+            const nextMatches = findMatches.value;
+            if (nextMatches.length) {
+                selectFindMatch(Math.min(index, nextMatches.length - 1));
+                return;
+            }
+
+            const selectionStart = Math.min(match.start, displayContent.value.length);
+            const selectionEnd = Math.min(selectionStart + replacement.length, displayContent.value.length);
+            focusEditorWithoutScroll(ta);
+            ta.setSelectionRange(selectionStart, selectionEnd);
+            scrollEditorOffsetIntoView(ta, selectionStart);
+            rememberEditorSelection();
+            scheduleEditorLineHighlightUpdate();
+        });
+    });
+}
+
+function replaceAllFindMatches() {
+    if (mode.value === 'preview') {
+        mode.value = 'split';
+        nextTick(replaceAllFindMatches);
+        return;
+    }
+
+    const ta = editor.value;
+    const matches = findMatches.value;
+    if (!ta || !matches.length) return;
+
+    const result = replaceAllTextSearchMatches(displayContent.value, matches, replaceQuery.value);
+    displayContent.value = result.value;
+    currentFindIndex.value = -1;
+    ElNotification({
+        title: '替换完成',
+        message: `共替换 ${result.count} 处`,
+        type: 'success',
+        duration: 1800,
+    });
+
+    nextTick(() => {
+        requestAnimationFrame(() => {
+            const selectionStart = Math.min(result.selectionStart, displayContent.value.length);
+            const selectionEnd = Math.min(result.selectionEnd, displayContent.value.length);
+            focusEditorWithoutScroll(ta);
+            ta.setSelectionRange(selectionStart, selectionEnd);
+            scrollEditorOffsetIntoView(ta, selectionStart);
+            rememberEditorSelection();
+            scheduleEditorLineHighlightUpdate();
+        });
+    });
+}
+
+function updateEditorLineHighlight() {
+    editorLineHighlightRaf = 0;
+    const ta = editor.value;
+    if (!ta || document.activeElement !== ta || mode.value === 'preview') {
+        isEditorLineHighlightVisible.value = false;
+        return;
+    }
+
+    const line = getEditorCaretVisualLine(ta);
+    if (!line || line.top > ta.clientHeight || line.top + line.height < 0) {
+        isEditorLineHighlightVisible.value = false;
+        return;
+    }
+
+    isEditorLineHighlightVisible.value = true;
+    editorLineHighlightStyle.value = {
+        height: `${line.height}px`,
+        transform: `translateY(${line.top}px)`,
+    };
+}
+
+function scheduleEditorLineHighlightUpdate() {
+    if (editorLineHighlightRaf) return;
+    editorLineHighlightRaf = requestAnimationFrame(updateEditorLineHighlight);
+}
+
+function handleEditorFocus() {
+    rememberEditorSelection();
+    scheduleEditorLineHighlightUpdate();
+}
+
+function handleEditorBlur() {
+    isEditorLineHighlightVisible.value = false;
+}
+
+function handleEditorKeyup() {
+    rememberEditorSelection();
+    scheduleEditorLineHighlightUpdate();
+}
+
+function handleEditorClick() {
+    rememberEditorSelection();
+    scheduleEditorLineHighlightUpdate();
 }
 
 function normalizeHeadingText(text: string): string {
@@ -868,9 +1428,25 @@ function extractH1Title(text: string): { title: string; body: string } {
 }
 
 function handlePaste(e: ClipboardEvent) {
-    if (displayContent.value.trim() !== '') return;
     const text = e.clipboardData?.getData('text/plain') ?? '';
     if (!text) return;
+
+    const ta = editor.value;
+    if (ta) {
+        const insert = getIndentedCodeFencePasteText(ta.value, ta.selectionStart, text);
+        if (insert !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            const restoreScroll = preserveWriteScrollDuringInsertion(ta);
+            replaceEditorRange(ta, start, end, insert);
+            scheduleInsertionScrollRestore(restoreScroll);
+            return;
+        }
+    }
+
+    if (displayContent.value.trim() !== '') return;
     const { title: h1, body } = extractH1Title(text);
     if (!h1) return;
     e.preventDefault();
@@ -886,8 +1462,185 @@ function handlePaste(e: ClipboardEvent) {
 }
 
 // ============================================================
-// 编辑器键盘增强：Tab 缩进 + Ctrl/Cmd+S 保存草稿
+// 编辑器键盘增强：列表续写 + Tab 缩进 + Ctrl/Cmd+S 保存草稿
 // ============================================================
+function renumberOrderedListAroundOffset(ta: HTMLTextAreaElement, offset = ta.selectionStart): boolean {
+    const result = renumberOrderedList(ta.value, offset, ta.selectionStart, ta.selectionEnd);
+    if (!result) return false;
+
+    displayContent.value = result.value;
+    requestAnimationFrame(() => {
+        focusEditorWithoutScroll(ta);
+        ta.setSelectionRange(result.selectionStart, result.selectionEnd);
+        rememberEditorSelection();
+    });
+    return true;
+}
+
+function scheduleOrderedListRenumber(ta: HTMLTextAreaElement, offset = ta.selectionStart) {
+    requestAnimationFrame(() => {
+        renumberOrderedListAroundOffset(ta, offset);
+    });
+}
+
+function applyMarkdownListIndentMove(ta: HTMLTextAreaElement, result: MarkdownListIndentMoveResult): boolean {
+    displayContent.value = result.value;
+    requestAnimationFrame(() => {
+        focusEditorWithoutScroll(ta);
+        ta.setSelectionRange(result.nextCaret, result.nextCaret);
+        rememberEditorSelection();
+        if (result.movedLineWasOrdered) {
+            result.renumberOffsets.forEach((renumberOffset) => {
+                renumberOrderedListAroundOffset(ta, renumberOffset);
+            });
+        }
+    });
+    return true;
+}
+
+function handleMarkdownListTab(e: KeyboardEvent, ta: HTMLTextAreaElement): boolean {
+    if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return false;
+    if (ta.selectionStart !== ta.selectionEnd) return false;
+
+    const result = moveMarkdownListItemIndent(ta.value, ta.selectionStart, e.shiftKey);
+    if (!result) return false;
+    e.preventDefault();
+    return applyMarkdownListIndentMove(ta, result);
+}
+
+function replaceEditorRange(
+    ta: HTMLTextAreaElement,
+    start: number,
+    end: number,
+    insert: string,
+    nextSelectionStart = start + insert.length,
+    nextSelectionEnd = nextSelectionStart
+) {
+    focusEditorWithoutScroll(ta);
+    ta.setSelectionRange(start, end);
+    let inserted = false;
+    try {
+        inserted = document.execCommand('insertText', false, insert);
+    } catch {
+        inserted = false;
+    }
+    if (!inserted) {
+        ta.setRangeText(insert, start, end, 'end');
+        displayContent.value = ta.value;
+    }
+
+    requestAnimationFrame(() => {
+        focusEditorWithoutScroll(ta);
+        ta.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+        rememberEditorSelection();
+        scheduleEditorLineHighlightUpdate();
+    });
+}
+
+function handleMarkdownListEnter(e: KeyboardEvent, ta: HTMLTextAreaElement): boolean {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) {
+        return false;
+    }
+    if (ta.selectionStart !== ta.selectionEnd) return false;
+
+    const value = ta.value;
+    const caret = ta.selectionStart;
+    const { lineStart, lineEnd, lineText } = getCurrentLineInfo(value, caret);
+    if (isCursorInsideCodeFence(value, lineStart)) return false;
+
+    const listLine = parseMarkdownListLine(lineText);
+    if (listLine) {
+        e.preventDefault();
+        if (!listLine.content.trim()) {
+            replaceEditorRange(ta, lineStart, lineEnd, listLine.indent, lineStart + listLine.indent.length);
+            if (parseMarkdownOrderedListLine(lineText)) {
+                scheduleOrderedListRenumber(ta, lineStart + listLine.indent.length);
+            }
+            return true;
+        }
+
+        const nextMarker = getNextListMarker(listLine.marker);
+        const insert = `\n${listLine.indent}${nextMarker}${listLine.spacing}`;
+        replaceEditorRange(ta, caret, caret, insert);
+        if (parseMarkdownOrderedListLine(lineText)) {
+            scheduleOrderedListRenumber(ta, caret + insert.length);
+        }
+        return true;
+    }
+
+    const continuationIndent = getContinuationIndentFromPreviousList(value, lineStart, lineText);
+    if (!continuationIndent) return false;
+
+    e.preventDefault();
+    if (!lineText.trim()) {
+        replaceEditorRange(ta, lineStart, lineEnd, '');
+        return true;
+    }
+
+    replaceEditorRange(ta, caret, caret, `\n${continuationIndent}`);
+    return true;
+}
+
+function handleEditorInput(e: Event) {
+    const ta = editor.value;
+    if (!ta) return;
+    rememberEditorSelection();
+    scheduleEditorLineHighlightUpdate();
+
+    const inputType = (e as InputEvent).inputType || '';
+    if (!inputType.startsWith('delete') && inputType !== 'insertFromPaste' && inputType !== 'insertFromDrop') {
+        return;
+    }
+
+    const { lineStart } = getCurrentLineInfo(ta.value, ta.selectionStart);
+    if (isCursorInsideCodeFence(ta.value, lineStart)) return;
+    scheduleOrderedListRenumber(ta);
+}
+
+function handleEditorShortcut(e: KeyboardEvent): boolean {
+    const isPrimaryShortcut = e.ctrlKey || e.metaKey;
+    if (!isPrimaryShortcut || e.altKey || e.isComposing) return false;
+
+    const key = e.key.toLowerCase();
+    if (!e.shiftKey && key === 'f') {
+        e.preventDefault();
+        openFindPanel('find');
+        return true;
+    }
+
+    if (!e.shiftKey && key === 'h') {
+        e.preventDefault();
+        openFindPanel('replace');
+        return true;
+    }
+
+    if (!e.shiftKey && key === 'b') {
+        e.preventDefault();
+        applyBoldFormat();
+        return true;
+    }
+
+    if (e.shiftKey && e.code === 'Digit8') {
+        e.preventDefault();
+        applyMarkdownFormat('unordered-list');
+        return true;
+    }
+
+    if (e.shiftKey && e.code === 'Digit7') {
+        e.preventDefault();
+        applyMarkdownFormat('ordered-list');
+        return true;
+    }
+
+    if (e.shiftKey && key === 'k') {
+        e.preventDefault();
+        insertDefaultCode();
+        return true;
+    }
+
+    return false;
+}
+
 function handleKeydown(e: KeyboardEvent) {
     const ta = editor.value;
     if (!ta) return;
@@ -896,6 +1649,18 @@ function handleKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveDraft();
+        return;
+    }
+
+    if (handleEditorShortcut(e)) {
+        return;
+    }
+
+    if (handleMarkdownListEnter(e, ta)) {
+        return;
+    }
+
+    if (handleMarkdownListTab(e, ta)) {
         return;
     }
 
@@ -918,6 +1683,7 @@ function handleKeydown(e: KeyboardEvent) {
             requestAnimationFrame(() => {
                 ta.selectionStart = lineStart;
                 ta.selectionEnd = lineStart + next.length;
+                rememberEditorSelection();
             });
             return;
         }
@@ -928,6 +1694,7 @@ function handleKeydown(e: KeyboardEvent) {
         displayContent.value = newValue;
         requestAnimationFrame(() => {
             ta.selectionStart = ta.selectionEnd = start + indent.length;
+            rememberEditorSelection();
         });
     }
 }
@@ -937,12 +1704,30 @@ function handleKeydown(e: KeyboardEvent) {
 // ============================================================
 const SNIPPETS: Record<string, string> = {
     codeBlock: '```bash\nls\n```',
-    table: '| 列 1 | 列 2 |\n| --- | --- |\n| A | B |',
     math: '$$\nE = mc^2\n$$',
     mermaid: '```mermaid\nflowchart LR\n    A[开始] --> B[结束]\n```',
 };
 
-const LIST_PRESETS: { kind: MarkdownFormat; label: string }[] = [
+type ListFormat = 'unordered-list' | 'ordered-list';
+type MarkdownFormat = 'bold' | ListFormat;
+type CodeFormat = 'inline-code' | 'code-block';
+type AdmonitionKind = 'tips' | 'info' | 'warning' | 'error' | 'success' | 'thinking' | 'example' | 'summary';
+type ToolbarDefaults = {
+    list: ListFormat;
+    code: CodeFormat;
+    admonition: AdmonitionKind;
+    image: ImageInsertCommand;
+};
+
+const TOOLBAR_DEFAULTS_STORAGE_KEY = 'write-article-toolbar-defaults';
+const INITIAL_TOOLBAR_DEFAULTS: ToolbarDefaults = {
+    list: 'unordered-list',
+    code: 'code-block',
+    admonition: 'tips',
+    image: 'image',
+};
+
+const LIST_PRESETS: { kind: ListFormat; label: string }[] = [
     { kind: 'unordered-list', label: '无序列表' },
     { kind: 'ordered-list', label: '有序列表' },
 ];
@@ -953,7 +1738,7 @@ const CODE_PRESETS: { kind: CodeFormat; label: string }[] = [
 ];
 
 // 提示块类型：与 utils/markdown.ts 的 ADMONITION_TYPES / EMOJIS / 默认标题保持一致
-const ADMONITION_PRESETS: { kind: string; emoji: string; label: string; title: string }[] = [
+const ADMONITION_PRESETS: { kind: AdmonitionKind; emoji: string; label: string; title: string }[] = [
     { kind: 'tips', emoji: '💡', label: '提示', title: '提示' },
     { kind: 'info', emoji: '📘', label: '说明', title: '说明' },
     { kind: 'warning', emoji: '⚠️', label: '注意', title: '注意' },
@@ -964,8 +1749,68 @@ const ADMONITION_PRESETS: { kind: string; emoji: string; label: string; title: s
     { kind: 'summary', emoji: '📌', label: '总结', title: '总结' },
 ];
 
-type MarkdownFormat = 'bold' | 'unordered-list' | 'ordered-list';
-type CodeFormat = 'inline-code' | 'code-block';
+const IMAGE_INSERT_PRESETS: { kind: ImageInsertCommand; label: string }[] = [
+    { kind: 'drawio', label: '在线画图' },
+    { kind: 'image', label: '导入本地图片' },
+];
+
+function readToolbarDefaults(): ToolbarDefaults {
+    if (typeof window === 'undefined') return { ...INITIAL_TOOLBAR_DEFAULTS };
+
+    try {
+        const raw = window.localStorage.getItem(TOOLBAR_DEFAULTS_STORAGE_KEY);
+        if (!raw) return { ...INITIAL_TOOLBAR_DEFAULTS };
+        const saved = JSON.parse(raw) as Partial<ToolbarDefaults>;
+        return {
+            list: LIST_PRESETS.some((preset) => preset.kind === saved.list) ? saved.list! : INITIAL_TOOLBAR_DEFAULTS.list,
+            code: CODE_PRESETS.some((preset) => preset.kind === saved.code) ? saved.code! : INITIAL_TOOLBAR_DEFAULTS.code,
+            admonition: ADMONITION_PRESETS.some((preset) => preset.kind === saved.admonition) ? saved.admonition! : INITIAL_TOOLBAR_DEFAULTS.admonition,
+            image: IMAGE_INSERT_PRESETS.some((preset) => preset.kind === saved.image) ? saved.image! : INITIAL_TOOLBAR_DEFAULTS.image,
+        };
+    } catch {
+        return { ...INITIAL_TOOLBAR_DEFAULTS };
+    }
+}
+
+const toolbarDefaults = ref<ToolbarDefaults>(readToolbarDefaults());
+const defaultListPreset = computed(() => LIST_PRESETS.find((preset) => preset.kind === toolbarDefaults.value.list) || LIST_PRESETS[0]);
+const defaultCodePreset = computed(() => CODE_PRESETS.find((preset) => preset.kind === toolbarDefaults.value.code) || CODE_PRESETS[1]);
+const defaultAdmonitionPreset = computed(
+    () => ADMONITION_PRESETS.find((preset) => preset.kind === toolbarDefaults.value.admonition) || ADMONITION_PRESETS[0]
+);
+const defaultImageOption = computed(
+    () => IMAGE_INSERT_PRESETS.find((preset) => preset.kind === toolbarDefaults.value.image) || IMAGE_INSERT_PRESETS[1]
+);
+const defaultListTitle = computed(() => `点击插入${defaultListPreset.value.label}，⌘/Ctrl+Shift+8 为无序列表，⌘/Ctrl+Shift+7 为有序列表`);
+const defaultCodeTitle = computed(() => `点击插入${defaultCodePreset.value.label}，⌘/Ctrl+Shift+K 插入默认代码`);
+const defaultAdmonitionTitle = computed(() => `点击插入${defaultAdmonitionPreset.value.label}块`);
+const defaultImageTitle = computed(() => `点击执行${defaultImageOption.value.label}`);
+
+function persistToolbarDefaults() {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(TOOLBAR_DEFAULTS_STORAGE_KEY, JSON.stringify(toolbarDefaults.value));
+    } catch {
+        // localStorage 不可用时只保留本次会话内的默认项。
+    }
+}
+
+function updateToolbarDefault<K extends keyof ToolbarDefaults>(key: K, value: ToolbarDefaults[K]) {
+    toolbarDefaults.value = {
+        ...toolbarDefaults.value,
+        [key]: value,
+    };
+    persistToolbarDefaults();
+}
+
+function insertDefaultList() {
+    applyMarkdownFormat(toolbarDefaults.value.list);
+}
+
+function handleListPresetCommand(format: ListFormat) {
+    updateToolbarDefault('list', format);
+    applyMarkdownFormat(format);
+}
 
 function insertSnippet(key: string) {
     const snippet = SNIPPETS[key];
@@ -973,10 +1818,24 @@ function insertSnippet(key: string) {
     insertText(snippet);
 }
 
-function insertAdmonition(kind: string) {
+function insertTable() {
+    insertText(createMarkdownTable(tableRows.value, tableCols.value));
+    tablePickerVisible.value = false;
+}
+
+function insertAdmonition(kind: AdmonitionKind) {
     const preset = ADMONITION_PRESETS.find((p) => p.kind === kind);
     if (!preset) return;
     insertText(`!!! ${preset.kind} ${preset.title}\n这里写${preset.label}内容\n!!!\n`);
+}
+
+function insertDefaultAdmonition() {
+    insertAdmonition(toolbarDefaults.value.admonition);
+}
+
+function handleAdmonitionPresetCommand(kind: AdmonitionKind) {
+    updateToolbarDefault('admonition', kind);
+    insertAdmonition(kind);
 }
 
 function insertCode(format: CodeFormat) {
@@ -987,6 +1846,15 @@ function insertCode(format: CodeFormat) {
     applyInlineCodeFormat();
 }
 
+function insertDefaultCode() {
+    insertCode(toolbarDefaults.value.code);
+}
+
+function handleCodePresetCommand(format: CodeFormat) {
+    updateToolbarDefault('code', format);
+    insertCode(format);
+}
+
 function replaceSelection(insert: string, selectionStart?: number, selectionEnd?: number) {
     const ta = editor.value;
     if (!ta) {
@@ -994,12 +1862,11 @@ function replaceSelection(insert: string, selectionStart?: number, selectionEnd?
         return;
     }
 
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
+    const { start, end } = getEditorSelectionRange(ta);
     const nextSelectionStart = selectionStart ?? start + insert.length;
     const nextSelectionEnd = selectionEnd ?? nextSelectionStart;
 
-    ta.focus();
+    focusEditorWithoutScroll(ta);
     ta.setSelectionRange(start, end);
     let inserted = false;
     try {
@@ -1013,8 +1880,9 @@ function replaceSelection(insert: string, selectionStart?: number, selectionEnd?
     }
 
     requestAnimationFrame(() => {
-        ta.focus();
+        focusEditorWithoutScroll(ta);
         ta.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+        rememberEditorSelection();
     });
 }
 
@@ -1025,11 +1893,9 @@ function applyBoldFormat() {
         return;
     }
 
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const selected = ta.value.slice(start, end);
-    const text = selected || '加粗文本';
-    replaceSelection(`**${text}**`, start + 2, start + 2 + text.length);
+    const { start, end } = getEditorSelectionRange(ta);
+    const edit = getBoldToggleEdit(ta.value, start, end, '加粗文本');
+    replaceEditorRange(ta, edit.start, edit.end, edit.insert, edit.selectionStart, edit.selectionEnd);
 }
 
 function applyInlineCodeFormat() {
@@ -1039,8 +1905,7 @@ function applyInlineCodeFormat() {
         return;
     }
 
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
+    const { start, end } = getEditorSelectionRange(ta);
     const selected = ta.value.slice(start, end);
     const text = selected || 'code';
     replaceSelection(`\`${text}\``, start + 1, start + 1 + text.length);
@@ -1053,15 +1918,9 @@ function applyListFormat(ordered: boolean) {
         return;
     }
 
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
+    const { start, end } = getEditorSelectionRange(ta);
     const selected = ta.value.slice(start, end);
-    const source = selected || '列表项';
-    const lines = source.split('\n');
-    const formatted = lines.map((line, index) => {
-        const text = line.replace(/^\s*(?:[-*+]\s+|\d+\.\s+)/, '');
-        return ordered ? `${index + 1}. ${text}` : `- ${text}`;
-    }).join('\n');
+    const formatted = formatMarkdownListSelection(selected || '列表项', ordered);
 
     replaceSelection(formatted, start, start + formatted.length);
 }
@@ -1080,17 +1939,18 @@ function insertText(snippet: string) {
         displayContent.value = (displayContent.value ? displayContent.value + '\n' : '') + snippet;
         return;
     }
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
+    const { start, end } = getEditorSelectionRange(ta);
     // 确保前面有空行（除非已经在行首）
     const before = ta.value.slice(0, start);
     const needsLeadingNewline = before.length > 0 && !before.endsWith('\n\n');
     const prefix = needsLeadingNewline ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
-    const insert = prefix + snippet;
+    const blockIndent = getBlockInsertionIndent(ta.value, start);
+    const insert = prefix + applyBlockInsertionIndent(snippet, blockIndent);
+    const restoreScroll = preserveWriteScrollDuringInsertion(ta);
 
     // 优先用 execCommand('insertText')：唯一能既保留 scrollTop、又写入浏览器原生
     // undo 栈的 API（setRangeText 不会进入 undo 栈，导致 Ctrl+Z 失效）。
-    ta.focus();
+    focusEditorWithoutScroll(ta);
     ta.setSelectionRange(start, end);
     let inserted = false;
     try {
@@ -1106,25 +1966,42 @@ function insertText(snippet: string) {
         displayContent.value = ta.value;
     }
 
-    // 把光标所在行滚动到可视区（仅当当前 scrollTop 没覆盖光标行时调整）
     const caret = start + insert.length;
-    const linesBefore = ta.value.slice(0, caret).split('\n').length;
-    const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 22;
-    const caretTop = (linesBefore - 1) * lineHeight;
-    const viewTop = ta.scrollTop;
-    const viewBottom = viewTop + ta.clientHeight;
-    if (caretTop < viewTop || caretTop + lineHeight > viewBottom) {
-        ta.scrollTop = Math.max(0, caretTop - ta.clientHeight / 2);
-    }
+    requestAnimationFrame(() => {
+        restoreScroll();
+        focusEditorWithoutScroll(ta);
+        ta.setSelectionRange(caret, caret);
+        rememberEditorSelection();
+        scheduleInsertionScrollRestore(restoreScroll);
+    });
 }
 
 // ============================================================
 // 图片插入：在线画图使用原生链接新开标签页，导入图片上传后插入 URL
 // ============================================================
-function handleImageInsertCommand(command: ImageInsertCommand) {
+function openDiagramsNet() {
+    if (typeof window === 'undefined') return;
+    const opened = window.open(DIAGRAMS_NET_URL, '_blank', 'noopener,noreferrer');
+    if (opened) {
+        opened.opener = null;
+    }
+}
+
+function executeImageInsertCommand(command: ImageInsertCommand) {
     if (command === 'image') {
         imageInput.value?.click();
+        return;
     }
+    openDiagramsNet();
+}
+
+function insertDefaultImage() {
+    executeImageInsertCommand(toolbarDefaults.value.image);
+}
+
+function handleImageInsertCommand(command: ImageInsertCommand) {
+    updateToolbarDefault('image', command);
+    executeImageInsertCommand(command);
 }
 
 async function handleImageImport(event: Event) {
@@ -1216,6 +2093,7 @@ function escapeHtmlAttribute(text: string): string {
 // 编辑/预览滚动同步：源码行锚点优先，标题锚点兜底，最后才退回比例同步。
 // ============================================================
 function syncEditorToPreview() {
+    if (isContentInsertionScrollLocked()) return;
     const previewScroller = getActivePreviewScroller();
     if (!previewScroller) return;
     const top = mapScrollTopBySourceAnchors('editor') ?? mapScrollTopByCatalogAnchors('editor') ?? mapScrollTopByRatio('editor');
@@ -1224,6 +2102,7 @@ function syncEditorToPreview() {
 }
 
 function syncPreviewToEditor() {
+    if (isContentInsertionScrollLocked()) return;
     const ta = editor.value;
     if (!ta) return;
     const top = mapScrollTopBySourceAnchors('preview') ?? mapScrollTopByCatalogAnchors('preview') ?? mapScrollTopByRatio('preview');
@@ -1248,7 +2127,9 @@ function schedulePreviewToEditorSync() {
 }
 
 function handleEditorScroll() {
+    scheduleEditorLineHighlightUpdate();
     if (mode.value !== 'split') return;
+    if (isContentInsertionScrollLocked()) return;
     if (programmaticScrollTargets.has('editor')) return;
     lastUserScrollSource = 'editor';
     scheduleEditorToPreviewSync();
@@ -1262,6 +2143,7 @@ function handlePreviewLayoutChange() {
             updateActiveCatalogId();
         }
         if (mode.value !== 'split') return;
+        if (isContentInsertionScrollLocked()) return;
         if (lastUserScrollSource === 'preview') {
             syncPreviewToEditor();
         } else {
@@ -1404,10 +2286,14 @@ function formatContent() {
 // ============================================================
 onMounted(() => {
     emitter.on('updateArticle', updateArticle);
+    document.addEventListener('mouseover', handleDocumentToolbarHover, true);
+    document.addEventListener('mousedown', handleDocumentToolbarMouseDown, true);
 });
 
 onBeforeUnmount(() => {
     emitter.off('updateArticle', updateArticle);
+    document.removeEventListener('mouseover', handleDocumentToolbarHover, true);
+    document.removeEventListener('mousedown', handleDocumentToolbarMouseDown, true);
     if (editorToPreviewRaf) {
         cancelAnimationFrame(editorToPreviewRaf);
         editorToPreviewRaf = 0;
@@ -1420,6 +2306,14 @@ onBeforeUnmount(() => {
         cancelAnimationFrame(previewLayoutRaf);
         previewLayoutRaf = 0;
     }
+    if (editorLineHighlightRaf) {
+        cancelAnimationFrame(editorLineHighlightRaf);
+        editorLineHighlightRaf = 0;
+    }
+    if (toolbarSelectionRestoreRaf) {
+        cancelAnimationFrame(toolbarSelectionRestoreRaf);
+        toolbarSelectionRestoreRaf = 0;
+    }
     (Object.keys(programmaticScrollTimers) as ScrollTargetName[]).forEach((target) => {
         const timer = programmaticScrollTimers[target];
         if (timer) {
@@ -1428,6 +2322,10 @@ onBeforeUnmount(() => {
         }
     });
     programmaticScrollTargets.clear();
+    if (contentInsertionRestoreTimer) {
+        window.clearTimeout(contentInsertionRestoreTimer);
+        contentInsertionRestoreTimer = 0;
+    }
     editorAnchorMirror?.remove();
     editorAnchorMirror = null;
     editorAnchorCache = null;
@@ -1524,6 +2422,86 @@ onBeforeUnmount(() => {
     margin-right: 8px;
 }
 
+:global(.toolbar-default-item),
+:global(.toolbar-default-item:hover),
+:global(.toolbar-default-item:focus) {
+    background-color: var(--el-color-danger-light-9);
+    color: var(--el-color-danger);
+    font-weight: 600;
+}
+
+.find-replace-bar {
+    background: #fff;
+    border-bottom: 1px solid #e4e7ed;
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 16px;
+}
+
+.find-replace-row {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    min-height: 28px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    white-space: nowrap;
+}
+
+.find-replace-row :deep(.el-button) {
+    margin-left: 0;
+}
+
+.find-replace-label {
+    color: #606266;
+    flex: 0 0 34px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.find-replace-input {
+    flex: 0 1 260px;
+    min-width: 180px;
+}
+
+.find-replace-status {
+    color: #909399;
+    flex: 0 0 72px;
+    font-size: 12px;
+}
+
+.table-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.table-picker-row {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.table-picker-label {
+    color: #606266;
+    font-size: 13px;
+}
+
+.table-picker-row :deep(.el-input-number) {
+    width: 112px;
+}
+
+.table-picker-actions {
+    border-top: 1px solid #ebeef5;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 12px;
+}
+
 .write-body {
     flex: 1;
     display: flex;
@@ -1605,10 +2583,26 @@ onBeforeUnmount(() => {
 }
 
 .write-edit {
+    background: #fff;
     display: flex;
+    overflow: hidden;
+    position: relative;
+}
+
+.editor-current-line {
+    background: rgba(64, 158, 255, 0.08);
+    border-radius: 1px;
+    left: 8px;
+    pointer-events: none;
+    position: absolute;
+    right: 8px;
+    top: 0;
+    z-index: 0;
 }
 
 .md-textarea {
+    background: transparent;
+    box-sizing: border-box;
     flex: 1;
     width: 100%;
     height: 100%;
@@ -1622,8 +2616,8 @@ onBeforeUnmount(() => {
     color: #2c3e50;
     tab-size: 4;
     -moz-tab-size: 4;
-    background: #fff;
-    box-sizing: border-box;
+    position: relative;
+    z-index: 1;
 }
 
 .write-preview-shell {

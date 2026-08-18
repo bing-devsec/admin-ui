@@ -349,6 +349,45 @@ function annotateRawHtmlImages(html: string, line: number): string {
     return html.replace(/<img\b(?![^>]*\bdata-md-line\s*=)([^>]*)>/gi, `<img data-md-line="${line}"$1>`);
 }
 
+function getHtmlAttrValue(attrs: string, name: string): string | null {
+    const re = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i');
+    const match = attrs.match(re);
+    if (!match) return null;
+    return match[2] ?? match[3] ?? match[4] ?? '';
+}
+
+function shouldOpenArticleLinkInNewTab(href: string): boolean {
+    const trimmed = href.trim();
+    if (!trimmed || trimmed.startsWith('#')) return false;
+    return !/^(?:javascript|data|vbscript):/i.test(trimmed);
+}
+
+function setHtmlAttr(attrs: string, name: string, value: string): string {
+    const re = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i');
+    if (re.test(attrs)) {
+        return attrs.replace(re, `${name}="${value}"`);
+    }
+    return `${attrs} ${name}="${value}"`;
+}
+
+function mergeRelAttr(attrs: string, values: string[]): string {
+    const current = getHtmlAttrValue(attrs, 'rel');
+    const relValues = new Set((current || '').split(/\s+/).filter(Boolean));
+    values.forEach((value) => relValues.add(value));
+    return setHtmlAttr(attrs, 'rel', Array.from(relValues).join(' '));
+}
+
+function ensureLinkAttributes(html: string): string {
+    return html.replace(/<a\b([^>]*)>/gi, (full, attrs: string) => {
+        const href = getHtmlAttrValue(attrs, 'href');
+        if (!href || !shouldOpenArticleLinkInNewTab(href)) return full;
+
+        let next = setHtmlAttr(attrs, 'target', '_blank');
+        next = mergeRelAttr(next, ['noopener', 'noreferrer']);
+        return `<a${next}>`;
+    });
+}
+
 md.core.ruler.after('inline', 'source_line_anchors', (state) => {
     state.tokens.forEach((token) => {
         const line = getTokenSourceLine(token);
@@ -777,7 +816,7 @@ export async function renderMarkdownToHtml(markdown: string | undefined | null, 
         const env = createRenderEnv();
         const html = md.render(contentToRender, env);
         const resolved = await resolveShikiPlaceholders(html, env);
-        return ensureImgAttributes(resolved);
+        return ensureLinkAttributes(ensureImgAttributes(resolved));
     } catch {
         return `<pre>${md.utils.escapeHtml(contentToRender)}</pre>`;
     }
