@@ -9,9 +9,16 @@ import MarkdownIt from 'markdown-it';
 // @ts-ignore - markdown-it-footnote 没有官方类型声明
 import footnotePlugin from 'markdown-it-footnote';
 import katex from 'katex';
-import type { Highlighter, ThemedToken } from 'shiki';
-import { createHighlighter, bundledLanguages } from 'shiki';
-import { getCustomShikiLanguage, isBundledShikiLanguage, isPlainTextShikiLanguage, normalizeCodeFenceLanguage } from './shikiLanguages';
+import type { HighlighterCore, ThemedToken } from 'shiki/core';
+import { createHighlighterCore } from 'shiki/core';
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
+import githubDark from 'shiki/themes/github-dark.mjs';
+import {
+    getBundledShikiLanguage,
+    getCustomShikiLanguage,
+    isPlainTextShikiLanguage,
+    normalizeCodeFenceLanguage,
+} from './shikiLanguages';
 
 const md = new MarkdownIt({
     html: true,
@@ -273,29 +280,31 @@ md.renderer.rules.math_inline = function (tokens, idx) {
 // 代码块：Shiki 占位符 → 异步消费
 // ============================================================
 const SHIKI_THEME = 'github-dark';
-let highlighterPromise: Promise<Highlighter> | null = null;
+let highlighterPromise: Promise<HighlighterCore> | null = null;
 const loadedLanguages = new Set<string>();
 
-function getHighlighter(): Promise<Highlighter> {
+function getHighlighter(): Promise<HighlighterCore> {
     if (!highlighterPromise) {
-        highlighterPromise = createHighlighter({
-            themes: [SHIKI_THEME],
+        highlighterPromise = createHighlighterCore({
+            engine: createJavaScriptRegexEngine(),
+            themes: [githubDark],
             langs: [],
         });
     }
     return highlighterPromise;
 }
 
-async function ensureLanguageLoaded(highlighter: Highlighter, lang: string): Promise<boolean> {
+async function ensureLanguageLoaded(highlighter: HighlighterCore, lang: string): Promise<boolean> {
     if (!lang) return false;
     if (isPlainTextShikiLanguage(lang)) return true;
     if (loadedLanguages.has(lang)) return true;
     const customLanguage = getCustomShikiLanguage(lang);
+    const bundledLanguage = getBundledShikiLanguage(lang);
     try {
         if (customLanguage) {
             await highlighter.loadLanguage(customLanguage);
-        } else if (isBundledShikiLanguage(lang)) {
-            await highlighter.loadLanguage(lang);
+        } else if (bundledLanguage) {
+            await highlighter.loadLanguage(bundledLanguage);
         } else {
             return false;
         }
@@ -499,7 +508,7 @@ async function resolveShikiPlaceholders(html: string, env: RenderEnv): Promise<s
     const tryHighlight = (lang: string, rawCode: string): ThemedToken[][] | null => {
         try {
             const result = highlighter.codeToTokens(rawCode, {
-                lang: lang as keyof typeof bundledLanguages,
+                lang,
                 theme: SHIKI_THEME,
             });
             return result.tokens;

@@ -1,7 +1,26 @@
 import { fileURLToPath, URL } from 'node:url';
 
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
+
+function katexWoff2Only(): Plugin {
+    const fallbackFontSources =
+        /,url\([^)]+\.woff\) format\("woff"\),url\([^)]+\.ttf\) format\("truetype"\)/g;
+
+    return {
+        name: 'katex-woff2-only',
+        enforce: 'pre',
+        transform(code, id) {
+            if (!id.split('?')[0].endsWith('/katex/dist/katex.min.css')) return;
+            return code.replace(fallbackFontSources, '');
+        },
+    };
+}
+
+const MERMAID_MODULE_PATHS = [
+    '/node_modules/mermaid/',
+    '/node_modules/@mermaid-js/',
+];
 
 // Vite 会传入 { command, mode }
 //   command: 'serve' = npm run dev / 'build' = npm run build
@@ -16,7 +35,7 @@ export default defineConfig(({ command }) => {
 
     return {
         base: '/',
-        plugins: [vue()],
+        plugins: [vue(), katexWoff2Only()],
         resolve: {
             alias: {
                 '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -35,6 +54,33 @@ export default defineConfig(({ command }) => {
                     },
                 },
             }),
+        },
+        build: {
+            cssCodeSplit: false,
+            rollupOptions: {
+                output: {
+                    manualChunks(id) {
+                        if (id.includes('vite/preload-helper')) {
+                            return 'vite-preload';
+                        }
+                        if (id.includes('/node_modules/dayjs/')) {
+                            return 'dayjs';
+                        }
+                        if (id.includes('/node_modules/katex/')) {
+                            return 'katex';
+                        }
+                        if (
+                            id.includes('/node_modules/lodash-es/') ||
+                            id.includes('/node_modules/lodash-unified/')
+                        ) {
+                            return 'lodash';
+                        }
+                        if (MERMAID_MODULE_PATHS.some((path) => id.includes(path))) {
+                            return 'mermaid';
+                        }
+                    },
+                },
+            },
         },
     };
 });

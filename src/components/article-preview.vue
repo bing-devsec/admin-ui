@@ -35,6 +35,7 @@
 <script lang="ts" setup>
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { renderMarkdownToHtml, prewarmHighlighter } from '../utils/markdown';
+import 'katex/dist/katex.min.css';
 
 const props = withDefaults(
     defineProps<{
@@ -1179,7 +1180,6 @@ function handlePreviewLinkClick(event: Event) {
 // ============================================================
 onMounted(() => {
     prewarmHighlighter();
-    void import('mermaid').catch(() => {});
     cssLinks.value = collectCssLinks();
     if (props.device === 'pc' && root.value) {
         bindCodeCopy(root.value);

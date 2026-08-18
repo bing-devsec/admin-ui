@@ -1,5 +1,67 @@
 import type { LanguageRegistration } from 'shiki';
-import { bundledLanguages } from 'shiki';
+import bash from 'shiki/langs/bash.mjs';
+import c from 'shiki/langs/c.mjs';
+import cpp from 'shiki/langs/cpp.mjs';
+import csharp from 'shiki/langs/csharp.mjs';
+import css from 'shiki/langs/css.mjs';
+import dockerfile from 'shiki/langs/dockerfile.mjs';
+import dotenv from 'shiki/langs/dotenv.mjs';
+import go from 'shiki/langs/go.mjs';
+import html from 'shiki/langs/html.mjs';
+import ini from 'shiki/langs/ini.mjs';
+import java from 'shiki/langs/java.mjs';
+import javascript from 'shiki/langs/javascript.mjs';
+import json from 'shiki/langs/json.mjs';
+import jsx from 'shiki/langs/jsx.mjs';
+import markdown from 'shiki/langs/markdown.mjs';
+import nginx from 'shiki/langs/nginx.mjs';
+import proto from 'shiki/langs/proto.mjs';
+import python from 'shiki/langs/python.mjs';
+import rust from 'shiki/langs/rust.mjs';
+import scss from 'shiki/langs/scss.mjs';
+import sql from 'shiki/langs/sql.mjs';
+import tsx from 'shiki/langs/tsx.mjs';
+import typescript from 'shiki/langs/typescript.mjs';
+import vue from 'shiki/langs/vue.mjs';
+import xml from 'shiki/langs/xml.mjs';
+import yaml from 'shiki/langs/yaml.mjs';
+
+const supportedBundledLanguages = [
+    bash,
+    c,
+    cpp,
+    csharp,
+    css,
+    dockerfile,
+    dotenv,
+    go,
+    html,
+    ini,
+    java,
+    javascript,
+    json,
+    jsx,
+    markdown,
+    nginx,
+    proto,
+    python,
+    rust,
+    scss,
+    sql,
+    tsx,
+    typescript,
+    vue,
+    xml,
+    yaml,
+];
+
+const bundledLanguageByName = new Map<string, LanguageRegistration[]>();
+for (const registrations of supportedBundledLanguages) {
+    for (const registration of registrations) {
+        bundledLanguageByName.set(registration.name, registrations);
+        registration.aliases?.forEach((alias) => bundledLanguageByName.set(alias, registrations));
+    }
+}
 
 const thriftLanguage: LanguageRegistration = {
     name: 'thrift',
@@ -311,8 +373,8 @@ export function getCustomShikiLanguage(lang: string): LanguageRegistration | und
     return customLanguages[lang];
 }
 
-export function isBundledShikiLanguage(lang: string): lang is keyof typeof bundledLanguages {
-    return lang in bundledLanguages;
+export function getBundledShikiLanguage(lang: string): LanguageRegistration[] | undefined {
+    return bundledLanguageByName.get(lang);
 }
 
 export function isPlainTextShikiLanguage(lang: string): boolean {
