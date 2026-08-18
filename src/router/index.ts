@@ -60,6 +60,11 @@ const routes: RouteRecordRaw[] = [
                 meta: { requiresAuth: true },
             },
             {
+                path: 'manage-site-dynamic',
+                component: () => import('@/views/manage-site-dynamic.vue'),
+                meta: { requiresAuth: true },
+            },
+            {
                 path: 'about-me',
                 component: () => import('@/views/about-me.vue'),
                 meta: { requiresAuth: true },
