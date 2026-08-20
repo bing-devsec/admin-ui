@@ -46,7 +46,6 @@
                 :title="submitLoadingText"
                 description="后端会等待 EdgeOne 缓存清理任务完成后再返回，请勿关闭页面或重复提交。"
                 type="info"
-                show-icon
                 :closable="false"
                 class="submit-progress-alert"
             />
@@ -491,6 +490,24 @@ async function onSaveDraft() {
     background: transparent;
     bottom: 4px;
     right: 8px;
+}
+
+.submit-progress-alert {
+    position: relative;
+    z-index: 2001;
+    border: 1px solid var(--el-color-primary-light-7);
+    background: var(--el-color-primary-light-9);
+    box-shadow: 0 4px 12px rgba(64, 158, 255, 0.12);
+}
+
+.submit-progress-alert :deep(.el-alert__title) {
+    color: #1f5f99;
+    font-weight: 600;
+}
+
+.submit-progress-alert :deep(.el-alert__description) {
+    color: #3f5366;
+    line-height: 1.6;
 }
 
 </style>
