@@ -140,76 +140,132 @@
 
         <pagination :total="total" :currentPage="currentPage" :pageSize="pageSize" @handleCurrentChange="handleCurrentChange" />
 
-        <el-drawer v-model="detailDrawer" :destroy-on-close="true" size="520px" class="comment-detail-drawer">
+        <el-drawer v-model="detailDrawer" :destroy-on-close="true" size="min(960px, 94vw)" class="comment-detail-drawer admin-drawer admin-detail-drawer">
             <template #header>
                 <div class="drawer-header">
                     <span class="drawer-title">评论详情</span>
+                    <div v-if="selectedComment" class="drawer-status-summary">
+                        <span>当前业务状态</span>
+                        <el-tag :type="statusTagType(selectedComment.status)" effect="light">{{ statusText(selectedComment.status) }}</el-tag>
+                        <template v-if="selectedModeration">
+                            <span>原始机审</span>
+                            <el-tag :type="statusTagType(selectedModeration.result.status)" effect="plain">{{ statusText(selectedModeration.result.status) }}</el-tag>
+                        </template>
+                    </div>
                 </div>
             </template>
 
-            <div v-if="selectedComment" class="comment-detail">
-                <div class="detail-meta-panel">
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">评论 ID</span>
-                        <span class="detail-meta-value">{{ selectedComment.id }}</span>
-                    </div>
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">评论状态</span>
-                        <span class="detail-meta-value">
-                            <el-tag :type="statusTagType(selectedComment.status)" effect="light">
-                                {{ statusText(selectedComment.status) }}
-                            </el-tag>
-                        </span>
-                    </div>
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">评论类型</span>
-                        <span class="detail-meta-value">{{ selectedComment.parentID ? '回复' : '主评论' }}</span>
-                    </div>
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">回复对象</span>
-                        <span class="detail-meta-value">{{ replyTargetCode(selectedComment) }}</span>
-                    </div>
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">IP</span>
-                        <span class="detail-meta-value">{{ selectedComment.ip || '-' }}</span>
-                    </div>
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">创建时间</span>
-                        <span class="detail-meta-value">{{ selectedComment.createTime }}</span>
-                    </div>
-                    <div class="detail-meta-row">
-                        <span class="detail-meta-label">更新时间</span>
-                        <span class="detail-meta-value">{{ selectedComment.updateTime || '-' }}</span>
-                    </div>
-                    <div v-if="shouldShowModerationReasons(selectedComment)" class="detail-meta-row detail-meta-row--reasons">
-                        <span class="detail-meta-label">机审原因</span>
-                        <span class="detail-meta-value detail-meta-value--reasons">
-                            <span
-                                v-for="(reason, index) in selectedComment.moderationReasons || []"
-                                :key="`${index}-${reason}`"
-                                class="moderation-reason-chip">
-                                {{ reason }}
-                            </span>
-                        </span>
-                    </div>
-                </div>
+            <div v-if="selectedComment" v-loading="detailLoading" class="comment-detail">
+                <el-alert
+                    v-if="detailError"
+                    class="detail-load-error"
+                    :closable="false"
+                    type="error"
+                    show-icon
+                    :title="detailError" />
+                <el-tabs v-model="detailTab" class="comment-detail-tabs">
+                    <el-tab-pane label="评论概览" name="overview">
+                        <div class="detail-meta-panel detail-meta-panel--grid">
+                            <div class="detail-meta-row"><span class="detail-meta-label">评论 ID</span><span class="detail-meta-value">{{ selectedComment.id }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">当前状态</span><span class="detail-meta-value"><el-tag :type="statusTagType(selectedComment.status)" effect="light">{{ statusText(selectedComment.status) }}</el-tag></span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">评论类型</span><span class="detail-meta-value">{{ selectedComment.parentID ? '回复' : '主评论' }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">回复对象</span><span class="detail-meta-value">{{ replyTargetCode(selectedComment) }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">评论人</span><span class="detail-meta-value">{{ commentAuthorCode(selectedComment) }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">文章</span><span class="detail-meta-value">{{ selectedComment.articleTitle || '文章已删除' }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">IP</span><span class="detail-meta-value">{{ selectedComment.ip || '-' }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">创建时间</span><span class="detail-meta-value">{{ selectedComment.createTime }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">更新时间</span><span class="detail-meta-value">{{ selectedComment.updateTime || '-' }}</span></div>
+                            <div class="detail-meta-row"><span class="detail-meta-label">审计快照</span><span class="detail-meta-value">{{ selectedModeration ? `#${selectedModeration.auditID}` : '暂无新审核系统审计快照' }}</span></div>
+                        </div>
+                        <div class="detail-content-panel">
+                            <div class="detail-content-header"><span class="detail-content-title">评论正文</span></div>
+                            <p class="comment-full-content">{{ selectedComment.content }}</p>
+                        </div>
+                        <el-alert
+                            v-if="selectedModeration && selectedModeration.result.status !== selectedComment.status"
+                            :closable="false"
+                            type="warning"
+                            show-icon
+                            title="当前业务状态已经与原始机器审核结果不同；审核快照仍保留当时的判断，不会被管理员操作覆盖。" />
+                    </el-tab-pane>
 
-                <div class="detail-content-panel">
-                    <div class="detail-content-header">
-                        <span class="detail-content-title">评论正文</span>
-                    </div>
-                    <p class="comment-full-content">{{ selectedComment.content }}</p>
-                </div>
+                    <el-tab-pane label="机器审核过程" name="moderation">
+                        <comment-moderation-audit-detail
+                            v-if="!detailError && selectedModeration"
+                            :row="selectedModeration.result"
+                            :meta="selectedModerationMeta" />
+                        <el-empty v-else-if="!detailError" description="该评论没有新审核系统的完整审计快照" />
+                    </el-tab-pane>
+
+                    <el-tab-pane label="人工处置" name="review">
+                        <div class="review-panel">
+                            <el-alert
+                                :closable="false"
+                                type="info"
+                                show-icon
+                                title="业务状态修改与审核校准相互独立；只有明确勾选后，本次人工判断才会影响后续审核。" />
+                            <el-form label-position="top" class="review-form">
+                                <el-form-item label="新的业务状态" required>
+                                    <el-radio-group v-model="reviewForm.status" class="review-status-group">
+                                        <el-radio-button label="approved">已通过</el-radio-button>
+                                        <el-radio-button label="pending">待审核</el-radio-button>
+                                        <el-radio-button label="rejected">已拒绝</el-radio-button>
+                                    </el-radio-group>
+                                </el-form-item>
+                                <div class="calibration-card" :class="{ 'is-enabled': reviewForm.includeFeedback }">
+                                    <el-checkbox v-model="reviewForm.includeFeedback" :disabled="!selectedModeration">
+                                        同时作为人工审核纠正纳入校准
+                                    </el-checkbox>
+                                    <p v-if="!selectedModeration">该评论没有新审核系统的审计记录，无法关联校准反馈，但仍可修改业务状态。</p>
+                                    <p v-else>反馈会关联审计记录 #{{ selectedModeration.auditID }}，并与模拟反馈共同参与后续真实评论决策。</p>
+                                </div>
+                                <el-form-item
+                                    v-if="reviewForm.includeFeedback"
+                                    label="正确分类"
+                                    :required="reviewForm.status !== 'approved'">
+                                    <el-select
+                                        v-model="reviewForm.expectedCategory"
+                                        style="width: 100%"
+                                        filterable
+                                        clearable
+                                        :disabled="reviewForm.status === 'approved'"
+                                        :placeholder="reviewForm.status === 'approved' ? '已通过无需风险分类' : '选择最主要的风险分类'">
+                                        <el-option
+                                            v-for="option in feedbackCategoryOptions"
+                                            :key="option.value"
+                                            :label="`${option.label}（${option.value}）`"
+                                            :value="option.value" />
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item v-if="reviewForm.includeFeedback" label="判断依据（建议填写）">
+                                    <el-input
+                                        v-model="reviewForm.note"
+                                        type="textarea"
+                                        :rows="4"
+                                        maxlength="500"
+                                        show-word-limit
+                                        placeholder="说明误判或漏判原因，以及对象、动作、否定或引用关系。" />
+                                </el-form-item>
+                                <div class="review-actions">
+                                    <span>提交时将原子更新业务状态{{ reviewForm.includeFeedback ? '并保存校准反馈' : '' }}。</span>
+                                    <el-button type="primary" :loading="reviewSubmitting" @click="submitReview">确认处置</el-button>
+                                </div>
+                            </el-form>
+                        </div>
+                    </el-tab-pane>
+                </el-tabs>
             </div>
         </el-drawer>
     </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessageBox, ElNotification } from 'element-plus';
 import pagination from '../components/pagination.vue';
+import CommentModerationAuditDetail from '../components/comment-moderation-audit-detail.vue';
+import type { ModerationAuditMeta, ModerationPreviewRow } from '../types/comment-moderation';
 import _axios from '../utils/axios';
 
 type CommentStatus = 'pending' | 'approved' | 'rejected';
@@ -229,6 +285,21 @@ interface CommentItem {
     updateTime: string;
 }
 
+interface CommentModerationAudit {
+    auditID: string;
+    source: string;
+    policyVersion: string;
+    evaluatedAt: string;
+    context: ModerationAuditMeta['context'];
+    result: ModerationPreviewRow;
+}
+
+interface CommentDetailResponse {
+    comment: CommentItem;
+    moderation?: CommentModerationAudit;
+    feedbackCategories?: string[];
+}
+
 const commentList = ref<CommentItem[]>([]);
 const router = useRouter();
 const currentPage = ref(1);
@@ -246,7 +317,27 @@ const timeRangeDraftStart = ref('');
 const timeRangeDraftEnd = ref('');
 const detailDrawer = ref(false);
 const selectedComment = ref<CommentItem | null>(null);
+const selectedModeration = ref<CommentModerationAudit | null>(null);
+const detailLoading = ref(false);
+const detailError = ref('');
+const detailTab = ref<'overview' | 'moderation' | 'review'>('overview');
+const reviewSubmitting = ref(false);
+const feedbackCategories = ref<string[]>([]);
+const reviewForm = ref({
+    status: 'pending' as CommentStatus,
+    includeFeedback: false,
+    expectedCategory: '',
+    note: '',
+});
 const selectedCommentIDList = ref<string[]>([]);
+
+const selectedModerationMeta = computed<ModerationAuditMeta>(() => ({
+    auditID: selectedModeration.value?.auditID || '',
+    source: selectedModeration.value?.source || '',
+    policyVersion: selectedModeration.value?.policyVersion || '',
+    evaluatedAt: selectedModeration.value?.evaluatedAt || '',
+    context: selectedModeration.value?.context,
+}));
 
 const DATE_VALUE_LENGTH = 'YYYY-MM-DD'.length;
 const TIME_RANGE_START_SUFFIX = ' 00:00:00';
@@ -357,6 +448,20 @@ const statusTagType = (status: string) => {
 
 const normalizeOptionalValue = (value?: string) => (value || '').trim();
 
+const moderationCategoryLabels: Record<string, string> = {
+    abuse: '辱骂攻击', contact: '联系方式导流', decoded_url: '编码外链', drugs: '毒品风险',
+    gambling: '赌博', gore: '血腥内容', hate: '仇恨排斥', harmful_value: '有害价值观',
+    illegal_privacy: '违法与隐私', minor: '未成年人风险', political: '政治动员',
+    risk_phrase: '风险短语', script_injection: '脚本注入', sensitive: '敏感风险',
+    sexual: '色情低俗', spam_fraud: '垃圾与欺诈', text_quality: '文本质量',
+    url: '外链风险', violence: '暴力威胁',
+};
+
+const feedbackCategoryOptions = computed(() => feedbackCategories.value.map((value) => ({
+    value,
+    label: moderationCategoryLabels[value] || value,
+})));
+
 const commentAuthorCode = (row: CommentItem) => normalizeOptionalValue(row.authorHandle) || '-';
 
 const replyTargetCode = (row: CommentItem) => normalizeOptionalValue(row.replyToAuthorHandle) || normalizeOptionalValue(row.replyToAuthorName) || '-';
@@ -376,9 +481,107 @@ const openAuthor = (row: CommentItem) => {
     });
 };
 
+const suggestedFeedbackCategory = () => {
+    const moderation = selectedModeration.value?.result;
+    if (!moderation) return '';
+    const allowed = new Set(feedbackCategories.value);
+    const probabilities = moderation.trace?.decisionEngine?.decision.categoryProbabilities || {};
+    const probabilityCategory = Object.entries(probabilities)
+        .filter(([category]) => allowed.has(category))
+        .sort((left, right) => right[1] - left[1])[0]?.[0];
+    if (probabilityCategory) return probabilityCategory;
+    return [...(moderation.signals || [])]
+        .filter((signal) => Boolean(signal.category && allowed.has(signal.category)))
+        .sort((left, right) => right.score - left.score)[0]?.category || '';
+};
+
+const resetReviewForm = () => {
+    reviewForm.value = {
+        status: selectedComment.value?.status || 'pending',
+        includeFeedback: false,
+        expectedCategory: '',
+        note: '',
+    };
+};
+
+const fetchCommentDetail = async (id: string) => {
+    detailLoading.value = true;
+    detailError.value = '';
+    try {
+        const response = await _axios.get('/admin/auth/comment/detail', { params: { id } });
+        const { code, message, data } = response.data;
+        if (code !== 2000 || message !== '') {
+            detailError.value = message || '获取评论详情失败';
+            ElNotification({ title: 'Failed', message: message || '获取评论详情失败', type: 'error' });
+            return;
+        }
+        const detail = data as CommentDetailResponse;
+        selectedComment.value = detail.comment;
+        selectedModeration.value = detail.moderation || null;
+        feedbackCategories.value = detail.feedbackCategories || [];
+        resetReviewForm();
+    } catch (error: any) {
+        detailError.value = error?.message ?? String(error);
+        ElNotification({ title: 'Error', message: detailError.value, type: 'error' });
+    } finally {
+        detailLoading.value = false;
+    }
+};
+
 const openDetail = (row: CommentItem) => {
     selectedComment.value = row;
+    selectedModeration.value = null;
+    feedbackCategories.value = [];
+    detailError.value = '';
+    detailTab.value = 'overview';
+    resetReviewForm();
     detailDrawer.value = true;
+    void fetchCommentDetail(row.id);
+};
+
+const submitReview = async () => {
+    if (!selectedComment.value || reviewSubmitting.value) return;
+    const includeFeedback = reviewForm.value.includeFeedback;
+    const category = reviewForm.value.status === 'approved' ? '' : reviewForm.value.expectedCategory.trim();
+    if (includeFeedback && !selectedModeration.value) {
+        ElNotification({ title: '无法校准', message: '该评论没有可关联的审核记录', type: 'warning' });
+        return;
+    }
+    if (includeFeedback && reviewForm.value.status !== 'approved' && !category) {
+        ElNotification({ title: '分类未选择', message: '待审核或已拒绝的校准反馈必须选择主要风险分类', type: 'warning' });
+        return;
+    }
+    if (includeFeedback && category && !feedbackCategories.value.includes(category)) {
+        ElNotification({ title: '分类无效', message: '请选择后端提供的审核分类', type: 'warning' });
+        return;
+    }
+    reviewSubmitting.value = true;
+    try {
+        const response = await _axios.put('/admin/auth/comment/review', {
+            id: selectedComment.value.id,
+            status: reviewForm.value.status,
+            includeFeedback,
+            auditID: includeFeedback ? selectedModeration.value?.auditID : '',
+            expectedCategory: includeFeedback ? category : '',
+            note: includeFeedback ? reviewForm.value.note.trim() : '',
+        });
+        const { code, message } = response.data;
+        if (code !== 2000 || message !== '') {
+            ElNotification({ title: 'Failed', message: message || '处理评论失败', type: 'error' });
+            return;
+        }
+        await fetchCommentList();
+        await fetchCommentDetail(selectedComment.value.id);
+        ElNotification({
+            title: 'Success',
+            message: includeFeedback ? '业务状态与校准反馈已保存' : '评论业务状态已更新',
+            type: 'success',
+        });
+    } catch (error: any) {
+        ElNotification({ title: 'Error', message: error?.message ?? String(error), type: 'error' });
+    } finally {
+        reviewSubmitting.value = false;
+    }
 };
 
 const handleSelectionChange = (selection: CommentItem[]) => {
@@ -565,6 +768,21 @@ const deleteComments = async (ids: string[], successMessage: string) => {
         });
     }
 };
+
+watch(() => reviewForm.value.status, (status) => {
+    if (status === 'approved') {
+        reviewForm.value.expectedCategory = '';
+        return;
+    }
+    if (reviewForm.value.includeFeedback && !reviewForm.value.expectedCategory) {
+        reviewForm.value.expectedCategory = suggestedFeedbackCategory();
+    }
+});
+
+watch(() => reviewForm.value.includeFeedback, (enabled) => {
+    if (!enabled || reviewForm.value.status === 'approved' || reviewForm.value.expectedCategory) return;
+    reviewForm.value.expectedCategory = suggestedFeedbackCategory();
+});
 
 onMounted(fetchCommentList);
 </script>
@@ -862,10 +1080,6 @@ onMounted(fetchCommentList);
     margin-left: 0;
 }
 
-:global(.comment-detail-drawer .el-drawer__header) {
-    margin-bottom: 10px;
-}
-
 .drawer-header {
     display: flex;
     align-items: center;
@@ -873,10 +1087,12 @@ onMounted(fetchCommentList);
     gap: 12px;
 }
 
-.drawer-title {
-    color: #303133;
-    font-size: 17px;
-    font-weight: 400;
+.drawer-status-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #909399;
+    font-size: 12px;
 }
 
 .comment-detail {
@@ -884,7 +1100,15 @@ onMounted(fetchCommentList);
     flex-direction: column;
     gap: 16px;
     color: #303133;
-    font-family: monospace;
+    font-family: inherit;
+}
+
+.comment-detail-tabs :deep(.el-tabs__header) {
+    margin-bottom: 16px;
+}
+
+.comment-detail-tabs :deep(.el-tabs__item) {
+    font-weight: 500;
 }
 
 .detail-meta-panel {
@@ -892,6 +1116,16 @@ onMounted(fetchCommentList);
     border: 1px solid #ebeef5;
     border-radius: 6px;
     background: #fff;
+}
+
+.detail-meta-panel--grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 14px;
+}
+
+.detail-meta-panel--grid .detail-meta-row:nth-child(odd) {
+    border-right: 1px solid #f0f2f5;
 }
 
 .detail-meta-row {
@@ -984,5 +1218,85 @@ onMounted(fetchCommentList);
     line-height: 1.8;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.review-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 680px;
+}
+
+.review-form {
+    padding: 18px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.review-status-group {
+    display: flex;
+    width: 100%;
+}
+
+.review-status-group :deep(.el-radio-button) {
+    flex: 1;
+}
+
+.review-status-group :deep(.el-radio-button__inner) {
+    width: 100%;
+}
+
+.calibration-card {
+    margin: 4px 0 18px;
+    padding: 12px 14px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    background: #fafafa;
+}
+
+.calibration-card.is-enabled {
+    border-color: #b3d8ff;
+    background: #f3f9ff;
+}
+
+.calibration-card p {
+    margin: 7px 0 0 24px;
+    color: #909399;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.review-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #ebeef5;
+}
+
+.review-actions span {
+    color: #909399;
+    font-size: 11px;
+}
+
+@media (max-width: 720px) {
+    .drawer-status-summary {
+        display: none;
+    }
+
+    .detail-meta-panel--grid {
+        grid-template-columns: 1fr;
+    }
+
+    .detail-meta-panel--grid .detail-meta-row:nth-child(odd) {
+        border-right: 0;
+    }
+
+    .review-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
 }
 </style>

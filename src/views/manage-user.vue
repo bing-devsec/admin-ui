@@ -136,7 +136,7 @@
             </template>
         </el-dialog>
 
-        <el-drawer v-model="detailDrawer" :destroy-on-close="true" size="520px" class="user-detail-drawer">
+        <el-drawer v-model="detailDrawer" :destroy-on-close="true" size="520px" class="user-detail-drawer admin-drawer admin-detail-drawer">
             <template #header>
                 <div class="drawer-header">
                     <span class="drawer-title">用户详情</span>
@@ -725,21 +725,11 @@ onMounted(async () => {
     font-style: normal;
 }
 
-:global(.user-detail-drawer .el-drawer__header) {
-    margin-bottom: 10px;
-}
-
 .drawer-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-}
-
-.drawer-title {
-    color: #303133;
-    font-size: 17px;
-    font-weight: 400;
 }
 
 .user-detail {

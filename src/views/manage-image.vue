@@ -89,7 +89,7 @@
             v-model="detailDrawer"
             size="640px"
             :destroy-on-close="true"
-            class="image-detail-drawer">
+            class="image-detail-drawer admin-drawer admin-detail-drawer">
             <template #header>
                 <div class="drawer-title">
                     <span>图片详情</span>
@@ -444,19 +444,6 @@ onMounted(fetchImageList);
 
 .action-buttons :deep(.el-button) {
     margin-left: 0;
-}
-
-:global(.image-detail-drawer .el-drawer__header) {
-    margin-bottom: 10px;
-}
-
-.drawer-title {
-    align-items: center;
-    display: flex;
-    gap: 10px;
-    color: #303133;
-    font-size: 17px;
-    font-weight: 400;
 }
 
 .detail-loading {

@@ -441,20 +441,12 @@ async function onSaveDraft() {
     display: flex;
     flex-direction: column;
     height: 100%;
-    margin: -20px;
 }
 
 .article-form {
     flex: 1;
     overflow-y: auto;
-    padding: 0px 24px;
-}
-
-.form-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-top: 16px;
+    padding: 0;
 }
 
 .form-hint {

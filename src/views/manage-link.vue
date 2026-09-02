@@ -39,7 +39,12 @@
             </div>
         </div>
 
-        <el-drawer v-model="drawer" :title="drawerTitle" :destroy-on-close="true" class="link-drawer">
+        <el-drawer
+            v-model="drawer"
+            :title="drawerTitle"
+            :destroy-on-close="true"
+            size="min(520px, 92vw)"
+            class="link-drawer admin-drawer admin-form-drawer">
             <template #header>
                 <div class="drawer-header">
                     <el-icon class="drawer-header-icon">
@@ -245,20 +250,4 @@ const handleDelete = async (_index: number, row: LinkItem) => {
     white-space: nowrap;
 }
 
-.drawer-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.drawer-header-icon {
-    color: var(--el-color-primary);
-    font-size: 20px;
-}
-
-.drawer-header-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #303133;
-}
 </style>

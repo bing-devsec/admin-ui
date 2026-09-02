@@ -1,0 +1,172 @@
+:root {
+    --admin-drawer-inline-padding: clamp(22px, 2.2vw, 30px);
+}
+
+.el-drawer.admin-drawer {
+    --el-drawer-padding-primary: 0;
+    background: #fff;
+    box-shadow: -12px 0 32px rgba(15, 23, 42, 0.12);
+}
+
+.admin-drawer .el-drawer__header {
+    align-items: center;
+    border-bottom: 1px solid #ebeef5;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    margin: 0;
+    min-height: 72px;
+    padding: 20px var(--admin-drawer-inline-padding) 15px;
+}
+
+.admin-drawer .el-drawer__header > :first-child {
+    min-width: 0;
+}
+
+.admin-drawer .el-drawer__body {
+    box-sizing: border-box;
+    padding: 16px var(--admin-drawer-inline-padding) 24px;
+    scrollbar-color: #c0c4cc transparent;
+    scrollbar-width: thin;
+}
+
+.admin-drawer .el-drawer__body::-webkit-scrollbar {
+    width: 7px;
+}
+
+.admin-drawer .el-drawer__body::-webkit-scrollbar-thumb {
+    background: #c0c4cc;
+    border-radius: 999px;
+}
+
+.admin-drawer .el-drawer__close-btn {
+    align-items: center;
+    border-radius: 8px;
+    color: #606266;
+    display: inline-flex;
+    flex: 0 0 32px;
+    height: 32px;
+    justify-content: center;
+    transition:
+        background-color 0.16s ease,
+        color 0.16s ease;
+    width: 32px;
+}
+
+.admin-drawer .el-drawer__close-btn:hover {
+    background: #f2f6fc;
+    color: #303133;
+}
+
+.admin-drawer .drawer-header,
+.admin-drawer .drawer-title {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    min-width: 0;
+}
+
+.admin-drawer .drawer-header-icon {
+    align-items: center;
+    background: var(--el-color-primary-light-9);
+    border-radius: 8px;
+    color: var(--el-color-primary);
+    display: inline-flex;
+    flex: 0 0 32px;
+    font-size: 18px;
+    height: 32px;
+    justify-content: center;
+    width: 32px;
+}
+
+.admin-drawer .drawer-header-title,
+.admin-drawer .drawer-title {
+    color: #303133;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.admin-form-drawer .el-drawer__body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.admin-form-drawer .el-drawer__body > * {
+    flex: 1;
+    min-height: 0;
+}
+
+.admin-form-drawer .el-form {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.admin-form-drawer .el-form-item {
+    margin-bottom: 20px;
+}
+
+.admin-form-drawer .el-form-item__label {
+    color: #303133;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+    margin-bottom: 7px;
+    padding: 0;
+}
+
+.admin-form-drawer .el-input__wrapper,
+.admin-form-drawer .el-select__wrapper {
+    min-height: 40px;
+}
+
+.admin-form-drawer .el-textarea__inner {
+    line-height: 1.65;
+    padding: 10px 12px;
+}
+
+.admin-form-drawer .el-segmented {
+    width: 100%;
+}
+
+.admin-form-drawer .el-segmented__item {
+    flex: 1;
+}
+
+.admin-form-drawer .form-hint {
+    line-height: 1.6;
+    margin-top: 6px;
+}
+
+.admin-form-drawer .form-footer {
+    align-items: center;
+    border-top: 1px solid #ebeef5;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: auto;
+    padding-top: 20px;
+}
+
+.admin-form-drawer .form-footer .el-button {
+    margin-left: 0;
+    min-width: 88px;
+}
+
+@media (max-width: 700px) {
+    :root {
+        --admin-drawer-inline-padding: 20px;
+    }
+
+    .admin-drawer .el-drawer__header {
+        min-height: 66px;
+        padding-top: 16px;
+    }
+
+    .admin-drawer .el-drawer__body {
+        padding-bottom: 20px;
+        padding-top: 14px;
+    }
+}

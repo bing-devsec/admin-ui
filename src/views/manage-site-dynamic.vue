@@ -17,8 +17,8 @@
             <div class="list-head">
                 <span class="head-drag"></span>
                 <span>内容</span>
-                <span>日期</span>
                 <span>状态</span>
+                <span>创建时间</span>
                 <span>更新时间</span>
                 <span>操作</span>
             </div>
@@ -45,12 +45,12 @@
                 <div class="content-cell" :title="item.content">
                     {{ item.content }}
                 </div>
-                <div class="date-cell">{{ item.eventDate }}</div>
                 <div class="status-cell">
                     <el-tag :type="item.status === 'published' ? 'success' : 'info'" disable-transitions>
                         {{ statusText(item.status) }}
                     </el-tag>
                 </div>
+                <div class="time-cell">{{ item.createTime }}</div>
                 <div class="time-cell">{{ item.updateTime }}</div>
                 <div class="action-cell">
                     <el-button size="default" @click="openEditDrawer(item)">编辑</el-button>
@@ -61,7 +61,11 @@
             <el-empty v-if="siteDynamics.length === 0" description="暂无站点动态" />
         </div>
 
-        <el-drawer v-model="drawerVisible" :destroy-on-close="true" class="site-dynamic-drawer">
+        <el-drawer
+            v-model="drawerVisible"
+            :destroy-on-close="true"
+            size="min(520px, 92vw)"
+            class="site-dynamic-drawer admin-drawer admin-form-drawer">
             <template #header>
                 <div class="drawer-header">
                     <el-icon class="drawer-header-icon">
@@ -72,20 +76,6 @@
             </template>
 
             <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="site-dynamic-form">
-                <div class="form-grid">
-                    <el-form-item label="动态日期" prop="eventDate" required>
-                        <el-date-picker
-                            v-model="form.eventDate"
-                            type="date"
-                            value-format="YYYY-MM-DD"
-                            placeholder="选择日期"
-                            style="width: 100%" />
-                    </el-form-item>
-                    <el-form-item label="状态" prop="status" required>
-                        <el-segmented v-model="form.status" :options="statusOptions" />
-                    </el-form-item>
-                </div>
-
                 <el-form-item label="动态内容" prop="content" required>
                     <el-input
                         v-model="form.content"
@@ -94,6 +84,10 @@
                         show-word-limit
                         :autosize="{ minRows: 3, maxRows: 4 }"
                         placeholder="请输入要在前台展示的动态内容" />
+                </el-form-item>
+
+                <el-form-item label="发布状态" prop="status" required>
+                    <el-segmented v-model="form.status" :options="statusOptions" />
                 </el-form-item>
 
                 <div class="form-footer">
@@ -120,7 +114,6 @@ interface SiteDynamicItem {
     content: string;
     status: SiteDynamicStatus;
     sortOrder: number;
-    eventDate: string;
     createTime: string;
     updateTime: string;
 }
@@ -129,7 +122,6 @@ interface SiteDynamicForm {
     id: string;
     content: string;
     status: SiteDynamicStatus;
-    eventDate: string;
 }
 
 const siteDynamics = ref<SiteDynamicItem[]>([]);
@@ -143,7 +135,6 @@ const form = reactive<SiteDynamicForm>({
     id: '',
     content: '',
     status: 'published',
-    eventDate: today(),
 });
 
 const statusOptions = [
@@ -159,17 +150,8 @@ const rules: FormRules = {
         { required: true, message: '请输入动态内容', trigger: 'blur' },
         { max: 50, message: '动态内容不超过 50 个字符', trigger: 'blur' },
     ],
-    eventDate: [{ required: true, message: '请选择动态日期', trigger: 'change' }],
     status: [{ required: true, message: '请选择状态', trigger: 'change' }],
 };
-
-function today() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = `${now.getMonth() + 1}`.padStart(2, '0');
-    const day = `${now.getDate()}`.padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
 
 function statusText(status: string) {
     return status === 'published' ? '已发布' : '已隐藏';
@@ -179,7 +161,6 @@ function resetForm(row?: SiteDynamicItem) {
     form.id = row?.id ?? '';
     form.content = row?.content ?? '';
     form.status = row?.status ?? 'published';
-    form.eventDate = row?.eventDate ?? today();
     formRef.value?.clearValidate();
 }
 
@@ -220,7 +201,6 @@ async function submitForm() {
         id: form.id,
         content: form.content.trim(),
         status: form.status,
-        eventDate: form.eventDate,
     };
     const request = isEdit.value
         ? _axios.put('/admin/auth/site-dynamic/update', payload)
@@ -377,7 +357,7 @@ onMounted(() => {
 .list-row {
     align-items: center;
     display: grid;
-    grid-template-columns: 56px minmax(260px, 1fr) 130px 120px 160px 190px;
+    grid-template-columns: 56px minmax(260px, 1fr) 120px 170px 170px 190px;
 }
 
 .list-head {
@@ -453,7 +433,6 @@ onMounted(() => {
     white-space: nowrap;
 }
 
-.date-cell,
 .time-cell {
     color: #606266;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -470,39 +449,9 @@ onMounted(() => {
     gap: 8px;
 }
 
-.drawer-header {
-    align-items: center;
-    display: flex;
-    gap: 8px;
-}
-
-.drawer-header-icon {
-    color: var(--el-color-primary);
-    font-size: 20px;
-}
-
-.drawer-header-title {
-    color: #303133;
-    font-size: 16px;
-    font-weight: 600;
-}
-
 .site-dynamic-form {
     height: 100%;
     overflow-y: auto;
-}
-
-.form-grid {
-    display: grid;
-    gap: 12px;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.form-footer {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-    margin-top: 16px;
 }
 
 @media (max-width: 1100px) {
@@ -512,7 +461,7 @@ onMounted(() => {
 
     .list-head,
     .list-row {
-        min-width: 920px;
+        min-width: 960px;
     }
 }
 
@@ -520,10 +469,6 @@ onMounted(() => {
     .toolbar {
         height: auto;
         padding: 10px 15px;
-    }
-
-    .form-grid {
-        grid-template-columns: 1fr;
     }
 }
 </style>

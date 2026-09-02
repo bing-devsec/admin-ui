@@ -259,7 +259,12 @@
         </div>
 
         <!-- 发布抽屉（与原版完全一致） -->
-        <el-drawer v-model="drawer" :title="drawerTitle" :destroy-on-close="true" class="publish-drawer">
+        <el-drawer
+            v-model="drawer"
+            :title="drawerTitle"
+            :destroy-on-close="true"
+            size="min(560px, 92vw)"
+            class="publish-drawer admin-drawer admin-form-drawer">
             <template #header>
                 <div class="drawer-header">
                     <el-icon class="drawer-header-icon">
@@ -2753,32 +2758,6 @@ onBeforeUnmount(() => {
     .preview-catalog {
         flex-basis: 180px;
     }
-}
-
-/* 抽屉样式（保留原版） */
-.drawer-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.drawer-header-icon {
-    color: var(--el-color-primary);
-    font-size: 20px;
-}
-
-.drawer-header-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #303133;
-}
-
-.publish-drawer {
-    --el-drawer-padding-primary: 0;
-}
-
-.publish-drawer :deep(.el-drawer__body) {
-    overflow: hidden;
 }
 
 .image-file-input {

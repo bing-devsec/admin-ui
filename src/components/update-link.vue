@@ -141,13 +141,6 @@ async function onSubmit() {
     overflow-y: auto;
 }
 
-.form-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-top: 16px;
-}
-
 .form-hint {
     font-size: 12px;
     color: #909399;

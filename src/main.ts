@@ -71,6 +71,7 @@ import 'element-plus/es/components/tabs/style/css.mjs';
 import 'element-plus/es/components/tag/style/css.mjs';
 import './assets/article.css';
 import './assets/admin-responsive.css';
+import './assets/admin-drawer.css';
 
 import _axios from './utils/axios';
 
