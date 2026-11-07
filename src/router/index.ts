@@ -65,6 +65,11 @@ const routes: RouteRecordRaw[] = [
                 meta: { requiresAuth: true },
             },
             {
+                path: 'manage-toolbox',
+                component: () => import('@/views/manage-toolbox.vue'),
+                meta: { requiresAuth: true },
+            },
+            {
                 path: 'about-me',
                 component: () => import('@/views/about-me.vue'),
                 meta: { requiresAuth: true },

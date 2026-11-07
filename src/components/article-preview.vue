@@ -979,6 +979,9 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
             mermaidLib.initialize({
                 startOnLoad: false,
                 theme: 'default',
+                // Mermaid 12 changed the defaults; keep the existing preview layout and style.
+                layout: 'dagre',
+                look: 'classic',
                 themeCSS: MERMAID_THEME_CSS,
                 themeVariables: {
                     fontFamily: MERMAID_FONT_FAMILY,

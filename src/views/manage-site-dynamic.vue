@@ -1,5 +1,5 @@
 <template>
-    <div class="site-dynamic-page">
+    <div class="site-dynamic-page sortable-page">
         <div class="toolbar">
             <div class="toolbar-summary">
                 <span>站点动态</span>
@@ -311,115 +311,11 @@ onMounted(() => {
 });
 </script>
 
+<style scoped src="../assets/admin-sortable-list.css"></style>
+
 <style scoped>
 .site-dynamic-page {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-}
-
-.toolbar {
-    align-items: center;
-    background: #fff;
-    border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
-    box-sizing: border-box;
-    display: flex;
-    flex: 0 0 var(--admin-header-height, 48px);
-    gap: 12px;
-    height: var(--admin-header-height, 48px);
-    justify-content: space-between;
-    padding: 0 15px;
-}
-
-.toolbar-summary {
-    align-items: center;
-    color: #303133;
-    display: flex;
-    font-size: 14px;
-    font-weight: 600;
-    gap: 8px;
-}
-
-.summary-count {
-    color: #909399;
-    font-size: 13px;
-    font-weight: 400;
-}
-
-.dynamic-list {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-}
-
-.list-head,
-.list-row {
-    align-items: center;
-    display: grid;
-    grid-template-columns: 56px minmax(260px, 1fr) 120px 170px 170px 190px;
-}
-
-.list-head {
-    background: #fafafa;
-    border-bottom: 1px solid #ebeef5;
-    color: #909399;
-    font-size: 13px;
-    font-weight: 600;
-    height: 44px;
-    padding-right: 12px;
-}
-
-.list-row {
-    background: #fff;
-    border-bottom: 1px solid #ebeef5;
-    min-height: 58px;
-    padding-right: 12px;
-    transition:
-        background-color 0.16s ease,
-        box-shadow 0.16s ease;
-}
-
-.list-row:hover {
-    background: #fafcff;
-}
-
-.list-row.is-dragging {
-    opacity: 0.62;
-}
-
-.list-row.is-drag-over {
-    box-shadow: inset 0 2px 0 var(--el-color-primary);
-}
-
-.drag-cell {
-    align-items: center;
-    display: flex;
-    justify-content: center;
-}
-
-.drag-handle {
-    align-items: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    color: #a8abb2;
-    cursor: grab;
-    display: inline-flex;
-    height: 30px;
-    justify-content: center;
-    padding: 0;
-    width: 30px;
-}
-
-.drag-handle:hover {
-    background: #ecf5ff;
-    border-color: #c6e2ff;
-    color: var(--el-color-primary);
-}
-
-.drag-handle:active {
-    cursor: grabbing;
+    --sortable-list-columns: 56px minmax(260px, 1fr) 120px 170px 170px 190px;
 }
 
 .content-cell {
@@ -439,16 +335,6 @@ onMounted(() => {
     font-size: 13px;
 }
 
-.status-cell {
-    min-width: 0;
-}
-
-.action-cell {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 8px;
-}
-
 .site-dynamic-form {
     height: 100%;
     overflow-y: auto;
@@ -462,13 +348,6 @@ onMounted(() => {
     .list-head,
     .list-row {
         min-width: 960px;
-    }
-}
-
-@media (max-width: 700px) {
-    .toolbar {
-        height: auto;
-        padding: 10px 15px;
     }
 }
 </style>

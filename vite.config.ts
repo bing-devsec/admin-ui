@@ -75,6 +75,13 @@ export default defineConfig(({ command }) => {
                         ) {
                             return 'lodash';
                         }
+                        // Keep Mermaid 12's optional ELK engine lazy for the existing Dagre layout.
+                        if (
+                            id.includes('/node_modules/elkjs/') ||
+                            (id.includes('/node_modules/mermaid/') && /\/elk-[^/]+\.mjs$/.test(id))
+                        ) {
+                            return 'mermaid-elk';
+                        }
                         if (MERMAID_MODULE_PATHS.some((path) => id.includes(path))) {
                             return 'mermaid';
                         }
