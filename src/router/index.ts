@@ -30,6 +30,11 @@ const routes: RouteRecordRaw[] = [
                 meta: { requiresAuth: true },
             },
             {
+                path: 'manage-html-embed',
+                component: () => import('@/views/manage-html-embed.vue'),
+                meta: { requiresAuth: true },
+            },
+            {
                 path: 'manage-tag',
                 component: () => import('@/views/manage-tag.vue'),
                 meta: { requiresAuth: true },

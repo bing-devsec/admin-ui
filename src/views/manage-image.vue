@@ -69,7 +69,7 @@
                                 size="default"
                                 type="danger"
                                 :loading="deletingID === scope.row.id"
-                                :disabled="deletingID !== '' && deletingID !== scope.row.id"
+                                :disabled="!canDelete(scope.row)"
                                 @click="confirmDelete(scope.row)">
                                 删除
                             </el-button>
@@ -147,8 +147,12 @@
                             </span>
                             <div v-else class="reference-list">
                                 <div v-for="reference in selectedDetail.references" :key="reference.id" class="reference-row">
-                                    <span class="reference-title" :title="reference.articleTitle || '文章已删除'">
-                                        {{ reference.articleTitle || '文章已删除' }}
+                                    <el-tag size="small"
+                                        :type="reference.articleStatus === 'draft' ? 'warning' : 'success'">
+                                        {{ reference.articleStatus === 'draft' ? '草稿' : '已发布' }}
+                                    </el-tag>
+                                    <span class="reference-title" :title="reference.articleTitle || reference.articleID">
+                                        {{ reference.articleTitle || reference.articleID }}
                                     </span>
                                 </div>
                             </div>
@@ -170,7 +174,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessageBox, ElNotification } from 'element-plus';
 import pagination from '../components/pagination.vue';
 import _axios from '../utils/axios';
@@ -192,6 +196,7 @@ interface ImageReference {
     id: string;
     articleID: string;
     articleTitle: string;
+    articleStatus: 'draft' | 'published';
 }
 
 interface ImageDetail {
@@ -210,8 +215,14 @@ const loading = ref(false);
 const detailLoading = ref(false);
 const detailDrawer = ref(false);
 const deletingID = ref('');
+const deletePending = ref(false);
+let listRequest: AbortController | undefined;
+let detailRequest: AbortController | undefined;
 
-const fetchImageList = async () => {
+const fetchImageList = async (): Promise<void> => {
+    listRequest?.abort();
+    const request = new AbortController();
+    listRequest = request;
     loading.value = true;
     try {
         const response = await _axios.get('/admin/auth/article/image/list', {
@@ -221,22 +232,30 @@ const fetchImageList = async () => {
                 status: statusFilter.value || undefined,
                 keyword: keyword.value || undefined,
             },
+            signal: request.signal,
         });
+        if (request.signal.aborted) return;
         const { code, message, data } = response.data;
-        if (code === 2000 && message === '') {
-            imageList.value = data.rows || [];
-            total.value = data.total || 0;
-        } else {
-            ElNotification({ title: 'Failed', message: message || '获取图片列表失败', type: 'error' });
+        if (code !== 2000 || message) throw new Error(message || '获取图片列表失败');
+        const lastPage = Math.max(1, Math.ceil(data.total / pageSize));
+        if (currentPage.value > lastPage) {
+            currentPage.value = lastPage;
+            return fetchImageList();
         }
+        imageList.value = data.rows || [];
+        total.value = data.total;
     } catch (error: any) {
+        if (request.signal.aborted) return;
+        imageList.value = [];
+        total.value = 0;
         ElNotification({ title: 'Error', message: error?.message ?? String(error), type: 'error' });
     } finally {
-        loading.value = false;
+        if (!request.signal.aborted) loading.value = false;
     }
 };
 
 const handleCurrentChange = async (newPage: number) => {
+    if (currentPage.value === newPage) return;
     currentPage.value = newPage;
     await fetchImageList();
 };
@@ -247,83 +266,66 @@ const handleFilterChange = async () => {
 };
 
 const openDetail = async (row: ImageItem) => {
+    detailRequest?.abort();
+    const request = new AbortController();
+    detailRequest = request;
     detailDrawer.value = true;
     detailLoading.value = true;
     selectedDetail.value = null;
     try {
         const response = await _axios.get('/admin/auth/article/image/detail', {
             params: { id: row.id },
+            signal: request.signal,
         });
+        if (request.signal.aborted) return;
         const { code, message, data } = response.data;
         if (code === 2000 && message === '') {
             selectedDetail.value = data;
+            if (row.status !== data.image.status || row.refCount !== data.image.refCount) {
+                await fetchImageList();
+            }
         } else {
             ElNotification({ title: 'Failed', message: message || '获取图片详情失败', type: 'error' });
         }
     } catch (error: any) {
+        if (request.signal.aborted) return;
         ElNotification({ title: 'Error', message: error?.message ?? String(error), type: 'error' });
     } finally {
-        detailLoading.value = false;
+        if (!request.signal.aborted) detailLoading.value = false;
     }
 };
 
-const confirmDelete = (row: ImageItem) => {
-    const force = row.refCount > 0;
-    const warning = force
-        ? `<p>这张图片仍被 <strong>${row.refCount}</strong> 次引用，删除后相关文章会出现图片失效。</p>`
-        : '<p>这张图片当前没有文章引用。</p>';
+const canDelete = (row: ImageItem) => row.status === 'unused' && row.refCount === 0 && !deletePending.value;
 
-    ElMessageBox.alert(`${warning}<p>${row.imageName || '未命名图片'}</p>`, '删除图片', {
-        showCancelButton: true,
-        confirmButtonText: '直接删除',
-        cancelButtonText: '取消',
-        customClass: 'messageStyle',
-        cancelButtonClass: 'messageCancelBtn',
-        confirmButtonClass: 'messageConfirmBtn',
-        dangerouslyUseHTMLString: true,
-        closeOnClickModal: false,
-        closeOnPressEscape: false,
-        beforeClose: async (action, instance, done) => {
-            if (action !== 'confirm') {
-                done();
-                return;
-            }
-            if (deletingID.value !== '') return;
-
-            deletingID.value = row.id;
-            instance.confirmButtonLoading = true;
-            instance.confirmButtonText = '正在删除...';
-            const deleted = await deleteImage(row.id, force);
-            instance.confirmButtonLoading = false;
-            instance.confirmButtonText = '直接删除';
-            deletingID.value = '';
-            if (deleted) done();
-        },
-    }).catch((action) => {
-        if (action === 'cancel') return;
-    });
-};
-
-const deleteImage = async (id: string, force: boolean): Promise<boolean> => {
+const confirmDelete = async (row: ImageItem) => {
+    if (!canDelete(row)) return;
+    deletePending.value = true;
     try {
-        const response = await _axios.delete('/admin/auth/article/image/delete', {
-            data: { id, force },
+        await ElMessageBox.confirm(`确定删除图片「${row.imageName || row.id}」吗？`, '删除图片', {
+            type: 'warning',
+            confirmButtonText: '删除',
+            cancelButtonText: '取消',
         });
-        const { code, message } = response.data;
-        if (code === 2000 && message === '') {
-            ElNotification({ title: 'Success', message: '图片已删除', type: 'success' });
-            if (selectedDetail.value?.image.id === id) {
-                detailDrawer.value = false;
-                selectedDetail.value = null;
-            }
-            await fetchImageList();
-            return true;
+    } catch {
+        deletePending.value = false;
+        return;
+    }
+    if (listRequest?.signal.aborted) return;
+    deletingID.value = row.id;
+    try {
+        const { data } = await _axios.delete('/admin/auth/article/image/delete', { data: { id: row.id } });
+        if (data.code !== 2000 || data.message) throw new Error(data.message || '删除图片失败');
+        ElNotification({ title: 'Success', message: '图片已删除', type: 'success' });
+        if (selectedDetail.value?.image.id === row.id) {
+            detailDrawer.value = false;
+            selectedDetail.value = null;
         }
-        ElNotification({ title: 'Failed', message: message || '删除图片失败', type: 'error' });
-        return false;
-    } catch (error: any) {
-        ElNotification({ title: 'Error', message: error?.message ?? String(error), type: 'error' });
-        return false;
+    } catch (error) {
+        ElNotification({ title: 'Failed', message: error instanceof Error ? error.message : '删除图片失败', type: 'error' });
+    } finally {
+        if (!listRequest?.signal.aborted) await fetchImageList();
+        deletingID.value = '';
+        deletePending.value = false;
     }
 };
 
@@ -362,6 +364,10 @@ const formatBytes = (size: number) => {
 };
 
 onMounted(fetchImageList);
+onBeforeUnmount(() => {
+    listRequest?.abort();
+    detailRequest?.abort();
+});
 </script>
 
 <style scoped>
@@ -590,6 +596,8 @@ onMounted(fetchImageList);
 
 .reference-row {
     display: flex;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
     padding-bottom: 6px;
     border-bottom: 1px solid #f0f2f5;

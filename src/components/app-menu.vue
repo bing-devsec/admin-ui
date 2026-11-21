@@ -33,7 +33,7 @@
 </template>
 
 <script lang="ts" setup>
-import { Back, Bell, Comment, Document, DocumentAdd, Link, Management, Picture, Postcard, Search, Suitcase, User, Warning } from "@element-plus/icons-vue";
+import { Back, Bell, Comment, Document, DocumentAdd, Link, Management, Picture, Postcard, Search, Suitcase, User, VideoPlay, Warning } from "@element-plus/icons-vue";
 import { markRaw, ref, watch, type Component } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -71,6 +71,7 @@ const menuSections: MenuSection[] = [
 		children: [
 			{ index: '/home/manage-article', title: '文章管理', icon: iconOf(Document) },
 			{ index: '/home/manage-image', title: '图片管理', icon: iconOf(Picture) },
+			{ index: '/home/manage-html-embed', title: '动画管理', icon: iconOf(VideoPlay) },
 			{ index: '/home/manage-tag', title: '专栏管理', icon: iconOf(Management) },
 			{ index: '/home/manage-toolbox', title: '工具箱管理', icon: iconOf(Suitcase) },
 			{ index: '/home/manager-link', title: '友链管理', icon: iconOf(Link) },

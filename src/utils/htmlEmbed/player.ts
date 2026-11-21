@@ -22,6 +22,8 @@ function bind(block: HTMLDetailsElement, resolveUrl: ResolveUrl): (() => void) |
 
     let request: AbortController | undefined;
     let frame: HTMLIFrameElement | undefined;
+    // Keep the decoded document while this block is mounted. Each opening gets a fresh iframe.
+    let source: string | undefined;
     function reset() {
         request?.abort();
         request = undefined;
@@ -40,17 +42,19 @@ function bind(block: HTMLDetailsElement, resolveUrl: ResolveUrl): (() => void) |
         retry!.hidden = true;
         status!.textContent = '正在加载演示…';
         try {
-            const response = await win!.fetch(resolveUrl(id), {
-                signal: current.signal, credentials: 'omit', redirect: 'error',
-            });
-            if (response.status === 404) throw new Error('找不到这个演示文件。');
-            if (!response.ok || response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'text/plain')
-                throw new Error('演示文件加载失败。');
-            if (Number(response.headers.get('content-length')) > maxBytes) throw new Error('演示文件超过 2 MiB。');
-            const bytes = await response.arrayBuffer();
-            if (bytes.byteLength > maxBytes) throw new Error('演示文件超过 2 MiB。');
-            if (current.signal.aborted || !block.open) return;
-            const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            if (source === undefined) {
+                const response = await win!.fetch(resolveUrl(id), {
+                    signal: current.signal, credentials: 'omit', redirect: 'error',
+                });
+                if (response.status === 404) throw new Error('找不到这个演示文件。');
+                if (!response.ok || response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'text/plain')
+                    throw new Error('演示文件加载失败。');
+                if (Number(response.headers.get('content-length')) > maxBytes) throw new Error('演示文件超过 2 MiB。');
+                const bytes = await response.arrayBuffer();
+                if (bytes.byteLength > maxBytes) throw new Error('演示文件超过 2 MiB。');
+                if (current.signal.aborted || !block.open) return;
+                source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            }
             const iframe = doc.createElement('iframe');
             iframe.title = block.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || '互动演示';
             iframe.setAttribute('sandbox', 'allow-scripts allow-forms');
@@ -86,6 +90,7 @@ function bind(block: HTMLDetailsElement, resolveUrl: ResolveUrl): (() => void) |
         expand.removeEventListener('click', fullscreen);
         doc.removeEventListener('fullscreenchange', reflectFullscreen);
         reset();
+        source = undefined;
     };
 }
 
