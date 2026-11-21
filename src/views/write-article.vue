@@ -1,29 +1,39 @@
 <template>
     <div class="write-shell">
-        <!-- 顶部工具条：模式切换 + 发布按钮 -->
         <div
             class="write-toolbar"
             @mouseenter="restoreEditorSelectionFromToolbar(true)"
             @mousedown.capture="handleToolbarMouseDown"
         >
             <div class="toolbar-left">
-                <el-radio-group v-model="mode" size="default">
-                    <el-radio-button value="edit">编辑</el-radio-button>
-                    <el-radio-button value="split">双栏</el-radio-button>
-                    <el-radio-button value="preview">预览</el-radio-button>
-                </el-radio-group>
-                <el-radio-group v-show="mode !== 'edit'" v-model="device" size="default" class="device-switch">
-                    <el-radio-button value="pc">
-                        <span class="device-label">电脑</span>
+                <el-radio-group v-model="mode" aria-label="编辑视图">
+                    <el-radio-button value="edit" title="编辑">
+                        <el-icon aria-hidden="true"><EditPen /></el-icon>
+                        <span class="toolbar-label">编辑</span>
                     </el-radio-button>
-                    <el-radio-button value="tablet">
-                        <span class="device-label">平板</span>
+                    <el-radio-button value="split" title="双栏">
+                        <el-icon aria-hidden="true"><Reading /></el-icon>
+                        <span class="toolbar-label">双栏</span>
                     </el-radio-button>
-                    <el-radio-button value="phone">
-                        <span class="device-label">手机</span>
+                    <el-radio-button value="preview" title="预览">
+                        <el-icon aria-hidden="true"><View /></el-icon>
+                        <span class="toolbar-label">预览</span>
                     </el-radio-button>
                 </el-radio-group>
-                <span class="toolbar-stat">{{ charCount }} 字 · {{ lineCount }} 行</span>
+                <el-radio-group v-show="mode !== 'edit'" v-model="device" aria-label="预览设备">
+                    <el-radio-button value="pc" title="电脑">
+                        <el-icon aria-hidden="true"><Monitor /></el-icon>
+                        <span class="toolbar-label">电脑</span>
+                    </el-radio-button>
+                    <el-radio-button value="tablet" title="平板">
+                        <el-icon aria-hidden="true" class="tablet-icon"><Cellphone /></el-icon>
+                        <span class="toolbar-label">平板</span>
+                    </el-radio-button>
+                    <el-radio-button value="phone" title="手机">
+                        <el-icon aria-hidden="true"><Iphone /></el-icon>
+                        <span class="toolbar-label">手机</span>
+                    </el-radio-button>
+                </el-radio-group>
             </div>
             <div class="toolbar-right">
                 <el-dropdown trigger="hover" popper-class="write-toolbar-popper" @command="handleListPresetCommand">
@@ -94,11 +104,11 @@
                     <div class="table-picker">
                         <div class="table-picker-row">
                             <span class="table-picker-label">数据行</span>
-                            <el-input-number v-model="tableRows" :min="1" :max="20" :step="1" size="small" controls-position="right" />
+                            <el-input-number v-model="tableRows" :min="1" :max="100" :step="1" size="small" controls-position="right" />
                         </div>
                         <div class="table-picker-row">
                             <span class="table-picker-label">列数</span>
-                            <el-input-number v-model="tableCols" :min="1" :max="10" :step="1" size="small" controls-position="right" />
+                            <el-input-number v-model="tableCols" :min="1" :max="20" :step="1" size="small" controls-position="right" />
                         </div>
                         <div class="table-picker-actions">
                             <el-button size="small" @click="tablePickerVisible = false">取消</el-button>
@@ -107,32 +117,25 @@
                     </div>
                 </el-popover>
                 <el-button @click="insertSnippet('math')" link>公式</el-button>
-                <el-button @click="insertSnippet('mermaid')" link>Mermaid</el-button>
-                <el-dropdown trigger="hover" popper-class="write-toolbar-popper" @command="handleImageInsertCommand">
-                    <el-button link :title="defaultImageTitle" @click.stop="insertDefaultImage">
-                        {{ defaultImageOption.label }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                <el-dropdown trigger="click" popper-class="write-toolbar-popper" @command="handleDiagramCommand">
+                    <el-button link :loading="htmlEmbedUploading" title="插入 Mermaid 图表或导入 HTML 演示">
+                        图示<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                         <el-dropdown-menu>
-                            <el-dropdown-item
-                                command="drawio"
-                                :class="{ 'toolbar-default-item': toolbarDefaults.image === 'drawio' }"
-                                @pointermove.prevent
-                            >
-                                在线画图
-                            </el-dropdown-item>
-                            <el-dropdown-item
-                                command="image"
-                                :class="{ 'toolbar-default-item': toolbarDefaults.image === 'image' }"
-                                @pointermove.prevent
-                            >
-                                导入本地图片
-                            </el-dropdown-item>
+                            <el-dropdown-item command="mermaid">Mermaid 图表</el-dropdown-item>
+                            <el-dropdown-item command="import-html-embed" divided :disabled="htmlEmbedUploading">导入 HTML 演示</el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
+                <el-button link :loading="imageUploading" :disabled="imageUploading" title="导入图片并添加图注，不需要时可删除图注行" @click="openImagePicker">
+                    {{ imageUploading ? '图片上传中' : '导入图片' }}
+                </el-button>
+                <el-button link title="在图片、Mermaid 图表或 HTML 演示下方插入图注" @click="insertText(SNIPPETS.caption, CAPTION_PLACEHOLDER)">
+                    插入图注
+                </el-button>
                 <el-divider class="toolbar-divider" direction="vertical" />
-                <el-button link title="⌘/Ctrl+F 查找，⌘/Ctrl+H 替换" @click="openFindPanel('find')">
+                <el-button link title="⌘/Ctrl+F 查找，⌘/Ctrl+H 替换" @mousedown="previewSelection && $event.preventDefault()" @click="openFindPanel('find')">
                     查找
                 </el-button>
                 <el-button @click="formatContent" link>
@@ -141,9 +144,11 @@
                 <el-button @click="toggleCatalog" link :class="{ 'is-catalog-active': isCatalogVisible }">
                     目录
                 </el-button>
-                <el-button :loading="draftSaving" @click="saveDraft({ navigateAfterSave: true })">
-                    保存草稿
+                <el-button link title="保存草稿" :loading="draftSaving" @click="saveDraft({ navigateAfterSave: true })">
+                    存档
                 </el-button>
+            </div>
+            <div class="toolbar-publish">
                 <el-button type="primary" @click="saveArticle">
                     <el-icon style="margin-right: 4px;">
                         <Promotion />
@@ -194,8 +199,14 @@
         </section>
 
         <!-- 主体：编辑器 + 预览（按 mode 切换显隐） -->
-        <div class="write-body" :data-mode="mode">
-            <div v-show="mode !== 'preview'" class="write-pane write-edit">
+        <div
+            ref="writeBody"
+            class="write-body"
+            :class="{ 'write-body--resizing': isSplitResizing }"
+            :data-mode="mode"
+            :style="{ '--editor-pane-ratio': splitRatio }"
+        >
+            <div v-show="mode !== 'preview'" id="write-edit-pane" class="write-pane write-edit">
                 <div
                     v-show="isEditorLineHighlightVisible"
                     class="editor-current-line"
@@ -206,13 +217,15 @@
                     v-model="displayContent"
                     class="md-textarea"
                     spellcheck="false"
-                    placeholder="开始撰写你的文章…&#10;&#10;支持：标题、列表、代码块（含语言标识）、表格、引用、提示块（!!! tips/info/warning/error/success/thinking/example/summary）、KaTeX 公式（$...$ / $$...$$）、Mermaid 图表"
+                    placeholder="开始撰写你的文章…&#10;&#10;支持：标题、列表、代码块（含语言标识）、表格、引用、提示块（!!! tips/info/warning/error/success/thinking/example/summary）、KaTeX 公式（$...$ / $$...$$）、Mermaid 图表、HTML 演示"
                     @input="handleEditorInput"
                     @paste="handlePaste"
                     @keydown="handleKeydown"
                     @keyup="handleEditorKeyup"
+                    @pointerdown="scheduleEditorLineHighlightUpdate"
                     @click="handleEditorClick"
                     @select="rememberEditorSelection"
+                    @selectionchange="rememberEditorSelection(); scheduleEditorLineHighlightUpdate()"
                     @focus="handleEditorFocus"
                     @blur="handleEditorBlur"
                     @scroll="handleEditorScroll"
@@ -220,19 +233,47 @@
             </div>
 
             <div
+                v-show="mode === 'split'"
+                ref="splitHandle"
+                class="write-split-handle"
+                role="separator"
+                tabindex="0"
+                aria-label="调整编辑区与预览区宽度"
+                aria-orientation="vertical"
+                aria-controls="write-edit-pane write-preview-pane"
+                :aria-valuemin="Math.round(splitMinRatio * 100)"
+                :aria-valuemax="Math.round((1 - splitMinRatio) * 100)"
+                :aria-valuenow="Math.round(splitRatio * 100)"
+                :aria-valuetext="`编辑区 ${Math.round(splitRatio * 100)}%，预览区 ${100 - Math.round(splitRatio * 100)}%`"
+                title="拖动调整宽度；双击恢复等分；左右方向键微调"
+                @pointerdown="startSplitResize"
+                @pointermove="moveSplitResize"
+                @pointerup="finishSplitPointer"
+                @pointercancel="finishSplitPointer"
+                @lostpointercapture="finishSplitPointer"
+                @keydown="handleSplitKeydown"
+                @dblclick="resetSplitRatio"
+            ></div>
+
+            <div
                 v-show="mode !== 'edit'"
+                id="write-preview-pane"
                 class="write-pane write-preview-shell"
                 :class="{ 'write-preview-shell--catalog': isCatalogVisible }"
             >
                 <div ref="previewPane" class="write-preview-scroll" @scroll="handlePreviewScroll">
                     <ArticlePreview
                         :markdown="displayContent"
+                        :active="mode !== 'edit'"
                         :device="device"
                         :device-width="currentDevice.width"
                         :device-height="currentDevice.height"
+                        :match-case="findMatchCase"
                         @rendered-html="handlePreviewRenderedHtml"
                         @preview-scroll="handlePreviewScroll"
                         @preview-layout-change="handlePreviewLayoutChange"
+                        @preview-selection="handlePreviewSelection"
+                        @preview-find="openFindPanel('find', $event)"
                     />
                 </div>
 
@@ -258,6 +299,11 @@
             </div>
         </div>
 
+        <footer class="write-statusbar" aria-label="写作状态">
+            <span class="status-context" :title="editorStatusText">{{ editorStatusText }}</span>
+            <span class="status-document">{{ documentStatsText }}</span>
+        </footer>
+
         <!-- 发布抽屉（与原版完全一致） -->
         <el-drawer
             v-model="drawer"
@@ -278,6 +324,7 @@
             </SubmitArticle>
         </el-drawer>
 
+        <input ref="htmlEmbedInput" type="file" hidden accept=".html,.htm,text/html" @change="handleHtmlEmbedUpload" />
         <input
             ref="imageInput"
             class="image-file-input"
@@ -292,7 +339,7 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElNotification } from 'element-plus';
-import { Promotion, ArrowDown } from '@element-plus/icons-vue';
+import { ArrowDown, Cellphone, EditPen, Iphone, Monitor, Promotion, Reading, View } from '@element-plus/icons-vue';
 import SubmitArticle from '../components/submit-article.vue';
 import ArticlePreview from '../components/article-preview.vue';
 import emitter from '../utils/event-bus.js';
@@ -361,7 +408,115 @@ const draftSaving = ref(false);
 
 const editor = ref<HTMLTextAreaElement | null>(null);
 const previewPane = ref<HTMLElement | null>(null);
+
+// 每次切回双栏恢复等分；拖动比例只保留在当前双栏模式中。
+const writeBody = ref<HTMLElement | null>(null);
+const splitHandle = ref<HTMLElement | null>(null);
+const preferredSplitRatio = ref(0.5);
+const splitAvailableWidth = ref(0);
+const isSplitResizing = ref(false);
+const splitMinRatio = computed(() => splitAvailableWidth.value > 0
+    ? Math.min(0.4, 280 / splitAvailableWidth.value)
+    : 0.4);
+const splitRatio = computed(() => Math.max(splitMinRatio.value,
+    Math.min(1 - splitMinRatio.value, preferredSplitRatio.value)));
+let splitResizeObserver: ResizeObserver | null = null;
+let splitPointerId: number | null = null;
+let splitGrabOffset = 0;
+let splitPreviousCursor = '';
+let splitPreviousUserSelect = '';
+let splitLayoutDisposed = false;
+
+function measureSplitWidth() {
+    if (mode.value !== 'split' || !writeBody.value) return;
+    splitAvailableWidth.value = Math.max(0, writeBody.value.clientWidth - (splitHandle.value?.offsetWidth ?? 0));
+}
+
+function setSplitRatio(value: number) {
+    // 重排引起的 scroll 事件不能覆盖最后的人为滚动方向。
+    markProgrammaticScroll('editor');
+    markProgrammaticScroll('preview');
+    preferredSplitRatio.value = Math.max(splitMinRatio.value, Math.min(1 - splitMinRatio.value, value));
+}
+
+function startSplitResize(event: PointerEvent) {
+    if (event.button !== 0 || !event.isPrimary || mode.value !== 'split' || splitPointerId !== null) return;
+    const handle = splitHandle.value;
+    if (!handle) return;
+    event.preventDefault();
+    measureSplitWidth();
+    if (splitAvailableWidth.value <= 0) return;
+    const rect = handle.getBoundingClientRect();
+    splitGrabOffset = event.clientX - (rect.left + rect.width / 2);
+    handle.focus({ preventScroll: true });
+    handle.setPointerCapture(event.pointerId);
+    splitPointerId = event.pointerId;
+    splitPreviousCursor = document.body.style.cursor;
+    splitPreviousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    isSplitResizing.value = true;
+}
+
+function moveSplitResize(event: PointerEvent) {
+    if (event.pointerId !== splitPointerId || !writeBody.value || splitAvailableWidth.value <= 0) return;
+    const left = writeBody.value.getBoundingClientRect().left;
+    const handleWidth = splitHandle.value?.offsetWidth ?? 0;
+    setSplitRatio((event.clientX - left - splitGrabOffset - handleWidth / 2) / splitAvailableWidth.value);
+}
+
+function stopSplitResize() {
+    if (splitPointerId === null) return;
+    const pointerId = splitPointerId;
+    splitPointerId = null;
+    isSplitResizing.value = false;
+    document.body.style.cursor = splitPreviousCursor;
+    document.body.style.userSelect = splitPreviousUserSelect;
+    if (splitHandle.value?.hasPointerCapture(pointerId)) splitHandle.value.releasePointerCapture(pointerId);
+}
+
+function finishSplitPointer(event: PointerEvent) {
+    if (event.pointerId === splitPointerId) stopSplitResize();
+}
+
+function resetSplitRatio() {
+    setSplitRatio(0.5);
+}
+
+function handleSplitKeydown(event: KeyboardEvent) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(event.key)) return;
+    event.preventDefault();
+    measureSplitWidth();
+    const step = event.shiftKey ? 0.1 : 0.02;
+    const ratio = event.key === 'Home' ? splitMinRatio.value
+        : event.key === 'End' ? 1 - splitMinRatio.value
+        : event.key === 'Enter' ? 0.5
+        : splitRatio.value + (event.key === 'ArrowLeft' ? -step : step);
+    setSplitRatio(ratio);
+}
+
+watch([splitRatio, splitAvailableWidth, isSplitResizing], async () => {
+    if (isSplitResizing.value) return;
+    await nextTick();
+    if (splitLayoutDisposed) return;
+    scheduleEditorLineHighlightUpdate();
+    handlePreviewLayoutChange();
+});
+
+watch(mode, async (next) => {
+    stopSplitResize();
+    if (next === 'split') setSplitRatio(0.5);
+    await nextTick();
+    if (splitLayoutDisposed) return;
+    measureSplitWidth();
+    handlePreviewLayoutChange();
+});
+
+const htmlEmbedInput = ref<HTMLInputElement | null>(null);
+const htmlEmbedUploading = ref(false);
+let htmlEmbedUploadController: AbortController | null = null;
 const imageInput = ref<HTMLInputElement | null>(null);
+const imageUploading = ref(false);
 const tablePickerVisible = ref(false);
 const tableRows = ref(3);
 const tableCols = ref(3);
@@ -379,8 +534,41 @@ const editorLineHighlightStyle = ref<Record<string, string>>({
     transform: 'translateY(0px)',
 });
 
-const charCount = computed(() => displayContent.value.length);
-const lineCount = computed(() => displayContent.value ? displayContent.value.split('\n').length : 0);
+type PreviewSelection = { text: string; selectedLength: number; matches: number };
+const previewSelection = ref<PreviewSelection | null>(null);
+const editorFocused = ref(false);
+const editorSelectionSnapshot = ref<EditorSelectionSnapshot | null>(null);
+const sourceLineStarts = computed(() => getLineStartOffsets(displayContent.value));
+const documentStatsText = computed(() => {
+    const source = displayContent.value;
+    const lines = source ? sourceLineStarts.value.length : 0;
+    return `${Array.from(source).length} 字 · ${lines} 行`;
+});
+const editorStatusText = computed(() => {
+    const preview = previewSelection.value;
+    if (preview) return `选中 ${preview.selectedLength} 字 · 匹配 ${preview.matches} 处`;
+
+    const range = editorSelectionSnapshot.value;
+    if (!editorFocused.value || !range || mode.value === 'preview') return '';
+    const source = displayContent.value;
+    const selected = source.slice(range.start, range.end);
+    if (selected) {
+        const matches = getTextSearchMatches(source, selected, { matchCase: findMatchCase.value });
+        return `选中 ${Array.from(selected).length} 字 · 匹配 ${matches.length} 处`;
+    }
+
+    const starts = sourceLineStarts.value;
+    const nextLine = starts.findIndex((start) => start > range.start);
+    const line = nextLine === -1 ? starts.length : nextLine;
+    const column = Array.from(source.slice(starts[line - 1], range.start)).length + 1;
+    return `第 ${line} 行 · 第 ${column} 列`;
+});
+
+function handlePreviewSelection(selection: PreviewSelection | null) {
+    if (selection && mode.value === 'edit') return;
+    previewSelection.value = selection;
+    if (selection) editorSelectionSnapshot.value = null;
+}
 const findMatches = computed<TextSearchMatch[]>(() => getTextSearchMatches(displayContent.value, findQuery.value, { matchCase: findMatchCase.value }));
 const hasFindMatches = computed(() => findMatches.value.length > 0);
 const findStatusText = computed(() => {
@@ -400,11 +588,8 @@ watch(findMatches, (matches) => {
     }
 });
 
-const DIAGRAMS_NET_URL = 'https://app.diagrams.net/';
 const ARTICLE_IMAGE_MAX_SIZE = 10 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
-
-type ImageInsertCommand = 'drawio' | 'image';
 
 // ============================================================
 // 预览目录：复用 portal-web 的 HTML heading 提取规则
@@ -429,11 +614,13 @@ watch(
 );
 
 watch(device, () => {
+    previewSelection.value = null;
     if (!isCatalogVisible.value) return;
     requestAnimationFrame(updateActiveCatalogId);
 });
 
 watch(mode, (next) => {
+    if (next === 'edit') previewSelection.value = null;
     if (next === 'preview') {
         isEditorLineHighlightVisible.value = false;
         return;
@@ -515,7 +702,6 @@ type EditorSelectionSnapshot = {
     end: number;
     direction: EditorSelectionDirection;
 };
-let editorSelectionSnapshot: EditorSelectionSnapshot | null = null;
 
 function markProgrammaticScroll(target: ScrollTargetName, duration = USER_SYNC_LOCK_MS) {
     programmaticScrollTargets.add(target);
@@ -586,12 +772,12 @@ function normalizeSelectionDirection(direction: string | null): EditorSelectionD
 
 function rememberEditorSelection() {
     const ta = editor.value;
-    if (!ta) return;
-    editorSelectionSnapshot = {
-        start: ta.selectionStart,
-        end: ta.selectionEnd,
-        direction: normalizeSelectionDirection(ta.selectionDirection),
-    };
+    if (!ta || document.activeElement !== ta) return;
+    const { start, end } = getEditorSelectionRange(ta);
+    const direction = normalizeSelectionDirection(ta.selectionDirection);
+    const previous = editorSelectionSnapshot.value;
+    if (previous?.start === start && previous.end === end && previous.direction === direction) return;
+    editorSelectionSnapshot.value = { start, end, direction };
 }
 
 function setEditorSelectionAndRefresh(
@@ -607,7 +793,8 @@ function setEditorSelectionAndRefresh(
 }
 
 function hasEditorTextSelectionSnapshot(): boolean {
-    return Boolean(editorSelectionSnapshot && editorSelectionSnapshot.start !== editorSelectionSnapshot.end);
+    const range = editorSelectionSnapshot.value;
+    return Boolean(range && range.start !== range.end);
 }
 
 function isToolbarSelectionTarget(target: EventTarget | null): boolean {
@@ -619,7 +806,7 @@ function isToolbarEditableTarget(target: EventTarget | null): boolean {
 }
 
 function restoreEditorSelectionFromToolbar(force = false) {
-    const snapshot = editorSelectionSnapshot;
+    const snapshot = editorSelectionSnapshot.value;
     if (!snapshot || snapshot.start === snapshot.end) return;
     if (toolbarSelectionRestoreRaf) return;
 
@@ -816,7 +1003,7 @@ function getEditorSourceAnchorTops(lines: number[], ta: HTMLTextAreaElement): Ma
     if (!mirror) return null;
 
     const text = displayContent.value;
-    const lineStarts = getLineStartOffsets(text);
+    const lineStarts = sourceLineStarts.value;
     const maxLine = lineStarts.length - 1;
     const normalizedLines = normalizeSourceLines(lines, maxLine);
     const styleSignature = syncMirrorTextareaStyle(mirror, ta);
@@ -871,12 +1058,15 @@ function getTextareaLineHeight(ta: HTMLTextAreaElement): number {
     return Number.isFinite(fontSize) && fontSize > 0 ? fontSize * 1.7 : 24;
 }
 
-function getEditorCaretVisualLine(ta: HTMLTextAreaElement): { top: number; height: number } | null {
+function getEditorActiveLogicalLine(ta: HTMLTextAreaElement): { top: number; height: number } | null {
     const mirror = getEditorAnchorMirror();
     if (!mirror) return null;
 
     const lineHeight = getTextareaLineHeight(ta);
     const caret = ta.selectionStart;
+    const lineStart = caret === 0 ? 0 : ta.value.lastIndexOf('\n', caret - 1) + 1;
+    const nextBreak = ta.value.indexOf('\n', caret);
+    const lineEnd = nextBreak === -1 ? ta.value.length : nextBreak;
     syncMirrorTextareaStyle(mirror, ta);
 
     const marker = document.createElement('span');
@@ -888,10 +1078,23 @@ function getEditorCaretVisualLine(ta: HTMLTextAreaElement): { top: number; heigh
     marker.style.verticalAlign = 'top';
     marker.textContent = '\u200b';
 
-    mirror.replaceChildren(document.createTextNode(ta.value.slice(0, caret)), marker);
+    // 从逻辑行开头测量完整内容，保留自动折行上下文，不受光标位于哪一视觉行影响。
+    const line = document.createElement('span');
+    line.textContent = ta.value.slice(lineStart, lineEnd) || '\u200b';
+    mirror.replaceChildren(document.createTextNode(ta.value.slice(0, lineStart)), marker, line);
+
+    let firstTop = Infinity;
+    let lastTop = -Infinity;
+    for (const rect of line.getClientRects()) {
+        firstTop = Math.min(firstTop, rect.top);
+        lastTop = Math.max(lastTop, rect.top);
+    }
+    const visualRows = Number.isFinite(firstTop)
+        ? Math.max(1, Math.round((lastTop - firstTop) / lineHeight) + 1)
+        : 1;
     return {
-        top: marker.offsetTop - ta.scrollTop,
-        height: lineHeight,
+        top: marker.getBoundingClientRect().top - mirror.getBoundingClientRect().top - ta.scrollTop,
+        height: visualRows * lineHeight,
     };
 }
 
@@ -936,14 +1139,14 @@ function getSelectedFindQuery(ta: HTMLTextAreaElement): string | null {
     return selected;
 }
 
-async function openFindPanel(target: FindPanelTarget = 'find') {
+async function openFindPanel(target: FindPanelTarget = 'find', previewText?: string) {
     if (mode.value === 'preview') {
         mode.value = 'split';
     }
 
     const ta = editor.value;
-    const selected = ta ? getSelectedFindQuery(ta) : null;
-    if (selected !== null && selected !== findQuery.value) {
+    const selected = previewText ?? previewSelection.value?.text ?? (ta ? getSelectedFindQuery(ta) : null);
+    if (selected && !/[\r\n]/.test(selected) && selected !== findQuery.value) {
         findQuery.value = selected;
         currentFindIndex.value = -1;
     }
@@ -1109,7 +1312,7 @@ function updateEditorLineHighlight() {
         return;
     }
 
-    const line = getEditorCaretVisualLine(ta);
+    const line = getEditorActiveLogicalLine(ta);
     if (!line || line.top > ta.clientHeight || line.top + line.height < 0) {
         isEditorLineHighlightVisible.value = false;
         return;
@@ -1128,11 +1331,14 @@ function scheduleEditorLineHighlightUpdate() {
 }
 
 function handleEditorFocus() {
+    editorFocused.value = true;
+    previewSelection.value = null;
     rememberEditorSelection();
     scheduleEditorLineHighlightUpdate();
 }
 
 function handleEditorBlur() {
+    editorFocused.value = false;
     isEditorLineHighlightVisible.value = false;
 }
 
@@ -1405,6 +1611,7 @@ async function scrollToCatalogHeading(id: string) {
 }
 
 function handlePreviewScroll() {
+    if (isSplitResizing.value) return;
     if (isCatalogVisible.value) {
         updateActiveCatalogId();
     }
@@ -1728,10 +1935,12 @@ function handleKeydown(e: KeyboardEvent) {
 // ============================================================
 // 工具栏：常用片段插入
 // ============================================================
+const CAPTION_PLACEHOLDER = '在这里填写图注';
 const SNIPPETS: Record<string, string> = {
     codeBlock: '```bash\nls\n```',
     math: '$$\nE = mc^2\n$$',
     mermaid: '```mermaid\nflowchart LR\n    A[开始] --> B[结束]\n```',
+    caption: `:caption[${CAPTION_PLACEHOLDER}]\n\n`,
 };
 
 type ListFormat = 'unordered-list' | 'ordered-list';
@@ -1742,7 +1951,6 @@ type ToolbarDefaults = {
     list: ListFormat;
     code: CodeFormat;
     admonition: AdmonitionKind;
-    image: ImageInsertCommand;
 };
 
 const TOOLBAR_DEFAULTS_STORAGE_KEY = 'write-article-toolbar-defaults';
@@ -1750,7 +1958,6 @@ const INITIAL_TOOLBAR_DEFAULTS: ToolbarDefaults = {
     list: 'unordered-list',
     code: 'code-block',
     admonition: 'tips',
-    image: 'image',
 };
 
 const LIST_PRESETS: { kind: ListFormat; label: string }[] = [
@@ -1775,11 +1982,6 @@ const ADMONITION_PRESETS: { kind: AdmonitionKind; emoji: string; label: string; 
     { kind: 'summary', emoji: '📌', label: '总结', title: '总结' },
 ];
 
-const IMAGE_INSERT_PRESETS: { kind: ImageInsertCommand; label: string }[] = [
-    { kind: 'drawio', label: '在线画图' },
-    { kind: 'image', label: '导入本地图片' },
-];
-
 function readToolbarDefaults(): ToolbarDefaults {
     if (typeof window === 'undefined') return { ...INITIAL_TOOLBAR_DEFAULTS };
 
@@ -1791,7 +1993,6 @@ function readToolbarDefaults(): ToolbarDefaults {
             list: LIST_PRESETS.some((preset) => preset.kind === saved.list) ? saved.list! : INITIAL_TOOLBAR_DEFAULTS.list,
             code: CODE_PRESETS.some((preset) => preset.kind === saved.code) ? saved.code! : INITIAL_TOOLBAR_DEFAULTS.code,
             admonition: ADMONITION_PRESETS.some((preset) => preset.kind === saved.admonition) ? saved.admonition! : INITIAL_TOOLBAR_DEFAULTS.admonition,
-            image: IMAGE_INSERT_PRESETS.some((preset) => preset.kind === saved.image) ? saved.image! : INITIAL_TOOLBAR_DEFAULTS.image,
         };
     } catch {
         return { ...INITIAL_TOOLBAR_DEFAULTS };
@@ -1804,13 +2005,9 @@ const defaultCodePreset = computed(() => CODE_PRESETS.find((preset) => preset.ki
 const defaultAdmonitionPreset = computed(
     () => ADMONITION_PRESETS.find((preset) => preset.kind === toolbarDefaults.value.admonition) || ADMONITION_PRESETS[0]
 );
-const defaultImageOption = computed(
-    () => IMAGE_INSERT_PRESETS.find((preset) => preset.kind === toolbarDefaults.value.image) || IMAGE_INSERT_PRESETS[1]
-);
 const defaultListTitle = computed(() => `点击插入${defaultListPreset.value.label}，⌘/Ctrl+Shift+8 为无序列表，⌘/Ctrl+Shift+7 为有序列表`);
 const defaultCodeTitle = computed(() => `点击插入${defaultCodePreset.value.label}，⌘/Ctrl+Shift+K 插入默认代码`);
 const defaultAdmonitionTitle = computed(() => `点击插入${defaultAdmonitionPreset.value.label}块`);
-const defaultImageTitle = computed(() => `点击执行${defaultImageOption.value.label}`);
 
 function persistToolbarDefaults() {
     if (typeof window === 'undefined') return;
@@ -1972,7 +2169,7 @@ function applyMarkdownFormat(format: MarkdownFormat) {
     applyListFormat(format === 'ordered-list');
 }
 
-function insertText(snippet: string) {
+function insertText(snippet: string, selectedText?: string) {
     const ta = editor.value;
     if (!ta) {
         displayContent.value = (displayContent.value ? displayContent.value + '\n' : '') + snippet;
@@ -2005,47 +2202,83 @@ function insertText(snippet: string) {
         displayContent.value = ta.value;
     }
 
-    const caret = start + insert.length;
+    const selectedOffset = selectedText ? insert.lastIndexOf(selectedText) : -1;
+    const selectionStart = start + (selectedOffset >= 0 ? selectedOffset : insert.length);
+    const selectionEnd = selectedOffset >= 0 ? selectionStart + selectedText!.length : selectionStart;
     requestAnimationFrame(() => {
         restoreScroll();
-        setEditorSelectionAndRefresh(ta, caret);
+        setEditorSelectionAndRefresh(ta, selectionStart, selectionEnd);
         scheduleInsertionScrollRestore(restoreScroll);
     });
 }
 
-// ============================================================
-// 图片插入：在线画图使用原生链接新开标签页，导入图片上传后插入 URL
-// ============================================================
-function openDiagramsNet() {
-    if (typeof window === 'undefined') return;
-    const opened = window.open(DIAGRAMS_NET_URL, '_blank', 'noopener,noreferrer');
-    if (opened) {
-        opened.opener = null;
-    }
+function handleDiagramCommand(command: string) {
+    if (command === 'mermaid') insertSnippet(command);
+    if (command === 'import-html-embed' && !htmlEmbedUploading.value) htmlEmbedInput.value?.click();
 }
 
-function executeImageInsertCommand(command: ImageInsertCommand) {
-    if (command === 'image') {
-        imageInput.value?.click();
+async function handleHtmlEmbedUpload(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || htmlEmbedUploading.value) return;
+    if (!/\.html?$/i.test(file.name) || !file.size || file.size > 2 * 1024 * 1024) {
+        ElNotification({ title: '文件不支持', message: '请选择 2 MiB 以内的非空 .html 或 .htm 文件', type: 'warning' });
         return;
     }
-    openDiagramsNet();
+
+    const controller = new AbortController();
+    htmlEmbedUploadController = controller;
+    htmlEmbedUploading.value = true;
+    const originalContent = displayContent.value;
+    const selection = editor.value && getEditorSelectionRange(editor.value);
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await _axios.post('/admin/auth/article/html-embed/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        const { code, message, data } = response.data;
+        if (code !== 2000 || message !== '') throw new Error(message || 'HTML 演示上传失败');
+        if (typeof data?.id !== 'string' || !/^[a-f0-9]{32}$/.test(data.id)) throw new Error('上传接口未返回有效的演示编号');
+
+        const ta = editor.value;
+        if (ta && selection && originalContent === displayContent.value) {
+            ta.setSelectionRange(selection.start, selection.end);
+        } else if (ta) {
+            // The author edited the document during upload; preserve any newly selected text.
+            ta.setSelectionRange(ta.selectionEnd, ta.selectionEnd);
+        }
+        insertText(`:html-embed[${data.id}]\n\n`);
+        ElNotification({ title: '演示已插入', message: '可在预览中打开演示', type: 'success', duration: 2200 });
+    } catch (error: unknown) {
+        if (!controller.signal.aborted) {
+            const message = error instanceof Error ? error.message : '请稍后重试';
+            ElNotification({ title: '演示上传失败', message, type: 'error' });
+        }
+    } finally {
+        if (htmlEmbedUploadController === controller) {
+            htmlEmbedUploadController = null;
+            htmlEmbedUploading.value = false;
+        }
+    }
 }
 
-function insertDefaultImage() {
-    executeImageInsertCommand(toolbarDefaults.value.image);
-}
-
-function handleImageInsertCommand(command: ImageInsertCommand) {
-    updateToolbarDefault('image', command);
-    executeImageInsertCommand(command);
+// ============================================================
+// 图片上传成功后连同图注一次插入，不需要图注时可删除对应标记行。
+// ============================================================
+function openImagePicker() {
+    if (imageUploading.value) return;
+    imageInput.value?.click();
 }
 
 async function handleImageImport(event: Event) {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = '';
-    if (!file) return;
+    if (!file || imageUploading.value) return;
 
     const validationMessage = validateArticleImageFile(file);
     if (validationMessage) {
@@ -2058,12 +2291,13 @@ async function handleImageImport(event: Event) {
         return;
     }
 
+    imageUploading.value = true;
     try {
         const uploaded = await uploadArticleImage(file);
         insertUploadedImage(uploaded.url, file.name.replace(/\.[^.]+$/i, ''));
         ElNotification({
             title: '图片已上传',
-            message: '已插入图片链接，文章正文不会再保存 base64 数据',
+            message: '图片和图注已插入，不需要图注时可删除图注行',
             type: 'success',
             duration: 2400,
         });
@@ -2074,6 +2308,8 @@ async function handleImageImport(event: Event) {
             type: 'error',
             duration: 2600,
         });
+    } finally {
+        imageUploading.value = false;
     }
 }
 
@@ -2111,7 +2347,8 @@ async function uploadArticleImage(file: File): Promise<{ url: string }> {
 
 function insertUploadedImage(url: string, title: string) {
     const normalizedTitle = normalizeImageTitle(title);
-    insertText(`<img src="${escapeHtmlAttribute(url)}" alt="${escapeHtmlAttribute(normalizedTitle)}" />`);
+    const image = `<img src="${escapeHtmlAttribute(url)}" alt="${escapeHtmlAttribute(normalizedTitle)}" />\n\n`;
+    insertText(image + SNIPPETS.caption, CAPTION_PLACEHOLDER);
 }
 
 function normalizeImageTitle(title: string): string {
@@ -2130,7 +2367,7 @@ function escapeHtmlAttribute(text: string): string {
 // 编辑/预览滚动同步：源码行锚点优先，标题锚点兜底，最后才退回比例同步。
 // ============================================================
 function syncEditorToPreview() {
-    if (isContentInsertionScrollLocked()) return;
+    if (isSplitResizing.value || isContentInsertionScrollLocked()) return;
     const previewScroller = getActivePreviewScroller();
     if (!previewScroller) return;
     const top = mapScrollTopBySourceAnchors('editor') ?? mapScrollTopByCatalogAnchors('editor') ?? mapScrollTopByRatio('editor');
@@ -2139,7 +2376,7 @@ function syncEditorToPreview() {
 }
 
 function syncPreviewToEditor() {
-    if (isContentInsertionScrollLocked()) return;
+    if (isSplitResizing.value || isContentInsertionScrollLocked()) return;
     const ta = editor.value;
     if (!ta) return;
     const top = mapScrollTopBySourceAnchors('preview') ?? mapScrollTopByCatalogAnchors('preview') ?? mapScrollTopByRatio('preview');
@@ -2164,6 +2401,7 @@ function schedulePreviewToEditorSync() {
 }
 
 function handleEditorScroll() {
+    if (isSplitResizing.value) return;
     scheduleEditorLineHighlightUpdate();
     if (mode.value !== 'split') return;
     if (isContentInsertionScrollLocked()) return;
@@ -2173,9 +2411,10 @@ function handleEditorScroll() {
 }
 
 function handlePreviewLayoutChange() {
-    if (previewLayoutRaf) return;
+    if (isSplitResizing.value || previewLayoutRaf) return;
     previewLayoutRaf = requestAnimationFrame(() => {
         previewLayoutRaf = 0;
+        if (isSplitResizing.value) return;
         if (isCatalogVisible.value) {
             updateActiveCatalogId();
         }
@@ -2193,6 +2432,9 @@ function handlePreviewLayoutChange() {
 // 编辑模式切换：从文章管理页带数据进来
 // ============================================================
 function updateArticle(data: any) {
+    htmlEmbedUploadController?.abort();
+    editorSelectionSnapshot.value = null;
+    previewSelection.value = null;
     id.value = data.id || data.articleID || '';
     draftID.value = data.draftID || '';
     tag.value = data.tag;
@@ -2322,6 +2564,10 @@ function formatContent() {
 // 生命周期
 // ============================================================
 onMounted(() => {
+    measureSplitWidth();
+    splitResizeObserver = new ResizeObserver(measureSplitWidth);
+    if (writeBody.value) splitResizeObserver.observe(writeBody.value);
+    window.addEventListener('blur', stopSplitResize);
     emitter.on('updateArticle', updateArticle);
     document.addEventListener('mouseover', handleDocumentToolbarHover, true);
     document.addEventListener('focusin', handleDocumentToolbarFocusIn, true);
@@ -2329,6 +2575,12 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    htmlEmbedUploadController?.abort();
+    splitLayoutDisposed = true;
+    stopSplitResize();
+    splitResizeObserver?.disconnect();
+    splitResizeObserver = null;
+    window.removeEventListener('blur', stopSplitResize);
     emitter.off('updateArticle', updateArticle);
     document.removeEventListener('mouseover', handleDocumentToolbarHover, true);
     document.removeEventListener('focusin', handleDocumentToolbarFocusIn, true);
@@ -2374,8 +2626,10 @@ onBeforeUnmount(() => {
 <style scoped>
 .write-shell {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    height: 100vh;
+    min-height: 0;
+    min-width: 0;
     background: #fff;
     overflow: hidden;
 }
@@ -2385,12 +2639,10 @@ onBeforeUnmount(() => {
     background: #fafafa;
     border-bottom: 1px solid var(--admin-header-border-color, #e4e7ed);
     box-sizing: border-box;
-    display: flex;
+    display: grid;
     flex: 0 0 var(--admin-header-height, 48px);
-    flex-wrap: nowrap;
+    grid-template-columns: minmax(2rem, max-content) minmax(3rem, 1fr) max-content;
     gap: 12px;
-    height: var(--admin-header-height, 48px);
-    justify-content: space-between;
     overflow-x: auto;
     overflow-y: hidden;
     padding: 0 16px;
@@ -2398,38 +2650,70 @@ onBeforeUnmount(() => {
     white-space: nowrap;
 }
 
+.toolbar-publish {
+    display: flex;
+    padding-inline-start: 8px;
+}
+
 .toolbar-left {
     display: flex;
-    flex: 0 0 auto;
     align-items: center;
-    gap: 12px;
+    gap: 20px;
+    min-width: 0;
+    /* 为滚动区域两端的按钮轮廓和键盘焦点环留出空间。 */
+    padding: 3px;
+    overflow-x: auto;
+    scrollbar-width: thin;
 }
 
-.toolbar-stat {
-    color: #909399;
-    font-size: 12px;
+.toolbar-left :deep(.el-radio-group) {
+    flex: none;
+    flex-wrap: nowrap;
 }
 
-.device-switch :deep(.el-radio-button__inner) {
+.toolbar-left :deep(.el-radio-button__inner) {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 17px;
 }
 
-.device-label {
-    font-size: 12px;
+.toolbar-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+.tablet-icon {
+    transform: rotate(90deg);
 }
 
 .toolbar-right {
     display: flex;
     align-items: center;
+    align-self: stretch;
     column-gap: 12px;
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
-    row-gap: 8px;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
 }
 
-.toolbar-right :deep(.el-button) {
+.toolbar-right > :first-child {
+    margin-inline-start: auto;
+}
+
+.toolbar-right > * {
+    flex: 0 0 auto;
+}
+
+.toolbar-right :deep(.el-button),
+.toolbar-publish :deep(.el-button) {
     margin-left: 0;
 }
 
@@ -2437,10 +2721,8 @@ onBeforeUnmount(() => {
     display: inline-flex;
 }
 
-.toolbar-right :deep(.el-button.is-link:hover),
-.toolbar-right :deep(.el-button.is-link:focus),
-.toolbar-right :deep(.el-button.is-link:focus-visible),
-.toolbar-right :deep(.el-tooltip__trigger:focus-visible) {
+.write-toolbar :deep(.el-button.is-link:hover),
+.write-toolbar :deep(.el-button.is-link:focus:not(:focus-visible)) {
     border-color: transparent;
     box-shadow: none;
     outline: none;
@@ -2548,6 +2830,32 @@ onBeforeUnmount(() => {
     min-height: 0;
 }
 
+.write-statusbar {
+    display: flex;
+    flex: 0 0 24px;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    box-sizing: border-box;
+    border-top: 1px solid var(--admin-header-border-color, #e4e7ed);
+    background: #fafafa;
+    color: var(--el-text-color-regular);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.status-context {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.status-document {
+    flex: none;
+    margin-inline-start: auto;
+}
+
 .write-pane {
     flex: 1;
     overflow: auto;
@@ -2618,7 +2926,63 @@ onBeforeUnmount(() => {
 }
 
 .write-body[data-mode='split'] .write-edit {
-    border-right: 1px solid #e4e7ed;
+    flex: var(--editor-pane-ratio, 0.5) 1 0;
+}
+
+.write-body[data-mode='split'] .write-preview-shell {
+    flex: calc(1 - var(--editor-pane-ratio, 0.5)) 1 0;
+}
+
+.write-split-handle {
+    position: relative;
+    flex: 0 0 10px;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    background: #fafafa;
+    z-index: 2;
+}
+
+.write-split-handle::before {
+    content: '';
+    position: absolute;
+    inset: 0 4px;
+    background: #e4e7ed;
+}
+
+.write-split-handle::after {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 28px;
+    left: calc(50% - 2px);
+    top: calc(50% - 14px);
+    border-radius: 2px;
+    background: #b1b3b8;
+}
+
+.write-split-handle:hover::after,
+.write-split-handle:focus-visible::after,
+.write-body--resizing .write-split-handle::after {
+    background: var(--el-color-primary);
+}
+
+.write-split-handle:focus-visible {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: -2px;
+}
+
+.write-body--resizing :deep(iframe) {
+    pointer-events: none;
+}
+
+@media (pointer: coarse) {
+    .write-split-handle {
+        flex-basis: 20px;
+    }
+    .write-split-handle::before {
+        inset-inline: 9px;
+    }
 }
 
 .write-edit {
@@ -2676,7 +3040,8 @@ onBeforeUnmount(() => {
     background: #fbfdff;
     border-left: 1px solid #e4e7ed;
     box-sizing: border-box;
-    flex: 0 0 220px;
+    flex: 0 0 min(220px, 35%);
+    min-width: 0;
     overflow-y: auto;
     padding: 14px 12px;
 }
@@ -2756,7 +3121,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1100px) {
     .preview-catalog {
-        flex-basis: 180px;
+        flex-basis: min(180px, 35%);
     }
 }
 
@@ -2764,8 +3129,4 @@ onBeforeUnmount(() => {
     display: none;
 }
 
-.drawio-menu-link {
-    color: inherit;
-    text-decoration: none;
-}
 </style>

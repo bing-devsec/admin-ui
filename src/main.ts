@@ -70,6 +70,7 @@ import 'element-plus/es/components/table/style/css.mjs';
 import 'element-plus/es/components/tabs/style/css.mjs';
 import 'element-plus/es/components/tag/style/css.mjs';
 import './assets/article.css';
+import './assets/article-table-toolbar.css';
 import './assets/admin-responsive.css';
 import './assets/admin-drawer.css';
 

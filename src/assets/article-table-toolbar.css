@@ -1,0 +1,154 @@
+/* Leave the range unrestricted so the line box also uses the icon font's metrics. */
+@font-face {
+    font-family: "Article Table Icons";
+    src: url("./table-wrap-icons.woff2") format("woff2");
+    font-display: swap;
+}
+
+/* The viewport supplies the reading default. Simulated editor devices set it explicitly. */
+@media (width < 992px) {
+    :root {
+        --article-table-space: nowrap;
+        --article-table-width: max-content;
+        --article-table-fullscreen: inline-flex;
+        --article-table-wrap-icon: '→';
+    }
+}
+[data-table-default-wrap="off"] {
+    --article-table-space: nowrap;
+    --article-table-width: max-content;
+    --article-table-fullscreen: inline-flex;
+    --article-table-wrap-icon: '→';
+}
+[data-table-default-wrap="on"] {
+    --article-table-space: normal;
+    --article-table-width: 100%;
+    --article-table-fullscreen: none;
+    --article-table-wrap-icon: '↵';
+}
+.ssr-table-wrap table[data-table-wrap-mode="wrap"] {
+    --article-table-space: normal;
+    --article-table-width: 100%;
+}
+.ssr-table-wrap table[data-table-wrap-mode="nowrap"] {
+    --article-table-space: nowrap;
+    --article-table-width: max-content;
+}
+:is(.article-body-ssr, .ssr-table-fs-body) .ssr-table-wrap table {
+    width: var(--article-table-width, 100%);
+    min-width: 100%;
+}
+:is(.article-body-ssr, .ssr-table-fs-body) .ssr-table-wrap :is(th, td) {
+    white-space: var(--article-table-space, normal);
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+:is(.article-body-ssr, .ssr-table-fs-body) .ssr-table-wrap td { vertical-align: top; }
+:is(.article-body-ssr, .ssr-table-fs-body) .ssr-table-wrap :is(th, td) :is(a, code) {
+    white-space: inherit;
+    overflow-wrap: inherit;
+}
+:is(.article-body-ssr, .ssr-table-fs-body) table:has(> thead > tr > th:nth-child(4)) th {
+    min-inline-size: 5em;
+}
+:is(.article-body-ssr, .ssr-table-fs-body) .ssr-table-wrap {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+.ssr-table-fs-body .ssr-table-scroll { width: 100%; overflow-x: auto; }
+.ssr-table-wrap > .ssr-table-fs-btn { display: none; }
+/* With a visible toolbar, the table header meets it along a straight edge. */
+@media screen and (scripting: enabled) {
+    .ssr-table-wrap:has(> .article-table-toolbar) > .ssr-table-scroll > table,
+    .ssr-table-wrap:has(> .article-table-toolbar) > .ssr-table-scroll > table > thead > tr:first-child > th {
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }
+}
+.article-table-toolbar {
+    order: -1;
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    box-sizing: border-box;
+    gap: 3px;
+    color: #43566a;
+    background: #f7f9fb;
+    border-radius: 4px 4px 0 0;
+    padding-inline: 4px;
+    font: 13px/1.2 system-ui, sans-serif;
+    user-select: none;
+}
+.article-table-column {
+    margin-inline: 3px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.article-table-toolbar button {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    font: inherit;
+    white-space: nowrap;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+/* All five controls share a compact highlight inside their larger hit area. */
+.article-table-toolbar button::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    max-width: 32px;
+    height: 24px;
+    border-radius: inherit;
+    z-index: -1;
+    pointer-events: none;
+}
+.article-table-toolbar button:is(:hover, :active)::after { background: #e5ebf0; }
+.article-table-toolbar button[aria-pressed="true"] { color: #194c76; }
+.article-table-toolbar button[aria-pressed="true"]::after { background: #dbe8f4; }
+.article-table-toolbar button:focus-visible { outline: 2px solid #326fa7; outline-offset: -2px; }
+.article-table-toolbar button > svg,
+.article-table-toolbar [data-table-wrap]:empty::before {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+/* The fullscreen path occupies 14 of its 24 viewBox units; the alignment paths occupy 20. */
+.article-table-toolbar .ssr-table-fs-btn svg path {
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: scale(1.4);
+}
+.article-table-toolbar [data-table-wrap] { margin-inline-start: auto; }
+.article-table-toolbar [data-table-wrap]:empty::before {
+    content: var(--article-table-wrap-icon, '↵');
+    text-align: center;
+    font: 18px/1 "Article Table Icons", "Segoe UI Symbol", "Apple Symbols", sans-serif;
+}
+.article-table-toolbar [data-table-wrap][aria-checked="true"] { --article-table-wrap-icon: '↵'; }
+.article-table-toolbar [data-table-wrap][aria-checked="false"] { --article-table-wrap-icon: '→'; }
+.article-table-toolbar .ssr-table-fs-btn { display: none; }
+.article-body-ssr .ssr-table-wrap[data-overflow="true"] > .article-table-toolbar .ssr-table-fs-btn {
+    display: var(--article-table-fullscreen, none);
+}
+@media (pointer: coarse) {
+    .article-table-toolbar { min-height: 44px; gap: 0; }
+    .article-table-toolbar button { width: 40px; height: 44px; }
+}
+@media print, (scripting: none) {
+    .article-table-toolbar { display: none; }
+}

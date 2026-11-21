@@ -95,6 +95,12 @@
     padding: clamp(5px, 4px + 0.3vw, 7px) clamp(24px, 20px + 1vw, 32px);
 }
 
+@media (max-width: 576px) {
+    .article-body-ssr h2 {
+        padding-left: calc(clamp(24px, 20px + 1vw, 32px) + 2px);
+    }
+}
+
 .article-body-ssr h2::before,
 .article-body-ssr h2::after {
     content: "";
@@ -1008,10 +1014,9 @@
     background-color: #f8f9fa;
 }
 
-/* 全屏表格本身：自然宽度 + 完整外框，无圆角，贴边显示 */
+/* 全屏表格保留完整外框，贴边显示。 */
 .ssr-table-fs-body table {
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     background-color: #fff;
@@ -1155,14 +1160,7 @@
     display: block;
 }
 
-/* 表格 */
-/* 表格双层 DOM 容器：
-   - .ssr-table-wrap：外层，position: relative 作为全屏按钮的定位参照系，自身不滚动；
-     这样按钮 right: 4px 始终对齐"屏幕可见的 wrap 右边缘"，不会随表格横滑漂移。
-   - .ssr-table-scroll：内层，真正承担横向滚动 (overflow-x: auto)。
-   PC 端外层宽度撑满 100%，仅在表格真的超过容器宽度时由内层出现滚动条；
-   移动端 ≤576px 表格 width 改为 max-content，强制走内层的横向滚动，避免 cell 被挤压。
-   双层 DOM 由 markdown 渲染管线（utils/markdown.ts 中 table_open/close）注入。 */
+/* 外层容器固定工具栏的位置，表格在内层容器横向滚动。 */
 .article-body-ssr .ssr-table-wrap {
     width: 100%;
     margin: 1em 0;
@@ -1192,40 +1190,6 @@
 /* 包裹层内部的 table：margin 由 wrap 接管，避免双倍上下间距 */
 .article-body-ssr .ssr-table-wrap table {
     margin: 0;
-}
-
-/* 表格全屏入口按钮（SSR 注入）：默认隐藏，CSS 仅在"移动端 + wrap 真的横向溢出"时显示，
-   避免给小表格也暴露入口，保持视觉简洁。
-   data-overflow="true" 由 [id].vue 的 ResizeObserver 在客户端检测后注入到外层 wrap。
-   按钮挂在 .ssr-table-wrap（不滚动层）上，right: 4px 永远锚定屏幕可见的 wrap 右上角，
-   表格在 .ssr-table-scroll 内滚动也不会让按钮位移。 */
-.article-body-ssr .ssr-table-fs-btn {
-    appearance: none;
-    border: 0;
-    background: rgba(255, 255, 255, 0.55);
-    color: #4a5568;
-    width: 30px;
-    height: 26px;
-    padding: 0;
-    border-radius: 4px;
-    cursor: pointer;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    z-index: 2;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-    transition: background-color 0.15s ease, color 0.15s ease;
-}
-.article-body-ssr .ssr-table-fs-btn:hover {
-    /* hover 时再加深到接近不透明，给出明确反馈 */
-    background-color: rgba(255, 255, 255, 0.9);
-    color: #1a202c;
-}
-.article-body-ssr .ssr-table-fs-btn:active {
-    background-color: #edf2f7;
 }
 
 .article-body-ssr table th {
@@ -1275,6 +1239,49 @@
     margin: 1em auto;
     border: 0;
     border-radius: 4px;
+}
+
+/* 图片与图注作为一组排版；图注留在 Mermaid 的横向滚动区域之外。 */
+.article-body-ssr .article-figure {
+    min-width: 0;
+    max-width: 100%;
+    margin: 1em 0;
+}
+
+.article-body-ssr .article-figure > img,
+.article-body-ssr .article-figure > a > img {
+    margin-block: 0;
+}
+
+.article-body-ssr .article-figure > .mermaid-block {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+}
+
+.article-body-ssr .article-figcaption {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 8px 0 0;
+    padding: 0 4px;
+    color: #626f7b;
+    font-size: clamp(13px, 0.875em, 14px);
+    line-height: 1.6;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.article-body-ssr .article-figcaption :is(a, code) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.article-body-ssr .article-figcaption code {
+    font-size: inherit;
 }
 
 .article-body-ssr img.article-img[src*=".svg"],
@@ -1353,32 +1360,15 @@
         );
     }
 
-    /* 移动端表格强制保留自然宽度，由 .ssr-table-scroll 提供横向滚动。
-       不改 width 的话，table 仍会被父级压成 100%，cell 被挤成多行甚至溢出，
-       内层 overflow-x: auto 也无从触发。
-       注意：选择器用后代选择（不带 >），因为 DOM 是 wrap > scroll > table 三层。 */
-    .article-body-ssr .ssr-table-wrap table {
-        width: max-content;
-        min-width: 100%;
-    }
-    /* cell 内边距与字号同步收紧：让数据型表格能塞下更多列；
-       white-space: nowrap 强制单行展示，避免被压成多行影响阅读。 */
+    /* 窄屏适当收紧内边距。 */
     .article-body-ssr .ssr-table-wrap th,
     .article-body-ssr .ssr-table-wrap td {
         padding: 6px 8px;
         font-size: 13px;
-        white-space: nowrap;
     }
 
     .article-body-ssr img.article-img {
         background-color: #f1f3f5;
-    }
-
-    /* 表格全屏按钮：仅在移动端 + 表格确实溢出时（data-overflow="true"）才显示。
-       data-overflow 由 [id].vue 的 ResizeObserver 在客户端写入；首屏 SSR 时该属性不存在，
-       按钮保持 display: none 状态，避免短暂闪现。 */
-    .article-body-ssr .ssr-table-wrap[data-overflow="true"] .ssr-table-fs-btn {
-        display: inline-flex;
     }
 }
 
@@ -1401,9 +1391,7 @@
     overflow-x: auto;
 }
 
-/* 右上角全屏按钮：与表格全屏按钮 .ssr-table-fs-btn 视觉对齐
-   （半透明白底、无边框、浅阴影、hover 加深、active 浅灰反馈），
-   保持文章内"全屏入口"统一观感。 */
+/* 图表右上角的全屏按钮。 */
 .article-body-ssr .mermaid-fullscreen-btn {
     appearance: none;
     border: 0;
@@ -1438,6 +1426,10 @@
      防止 svg 回填时页面发生明显跳动
    - 渲染完成（data-mermaid-rendered="true"）后，整段 innerHTML 被 svg 或 .mermaid-error 替换，
      ::before 占位自然失效，无需额外清理。 */
+.article-body-ssr .mermaid-source {
+    text-align: left;
+    color: #e1e4e8;
+}
 .article-body-ssr .mermaid-block[data-mermaid-rendered="false"] .mermaid-source {
     position: absolute;
     width: 1px;
@@ -1480,7 +1472,7 @@
 
 /* 已渲染态：svg 居中、保持原始尺寸或自适应宽度；
    附带一段 0.18s 的 opacity 淡入，避免 innerHTML 替换瞬间"啪"地闪现。 */
-.article-body-ssr .mermaid-block[data-mermaid-rendered="true"] svg {
+.article-body-ssr .mermaid-block[data-mermaid-rendered="true"] .mermaid-content > svg {
     max-width: 100%;
     height: auto;
     display: inline-block;
@@ -1493,6 +1485,16 @@
     }
     to {
         opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .article-body-ssr .mermaid-block[data-mermaid-rendered="false"] .mermaid-content::before {
+        opacity: 1;
+        animation: none;
+    }
+    .article-body-ssr .mermaid-block[data-mermaid-rendered="true"] .mermaid-content > svg {
+        animation: none;
     }
 }
 
@@ -1869,7 +1871,6 @@
      仅在 @media(max-width:576px) 才切回 inline-flex；
      在 admin-ui PC 模式下（root 直挂外层 document，宿主视口 > 576px），
      需要强制显示代码块全屏按钮和 Mermaid 全屏按钮（编辑预览查看长代码 / 流程图也有用）。
-   - 表格全屏在 PC 模式下意义不大，强制隐藏。
    ============================================================ */
 .article-preview .ssr-code-fullscreen {
     display: inline-flex;
@@ -1881,9 +1882,6 @@
 }
 .article-preview .mermaid-fullscreen-btn {
     display: inline-flex;
-}
-.article-preview .ssr-table-fs-btn {
-    display: none;
 }
 
 /* ============================================================ */

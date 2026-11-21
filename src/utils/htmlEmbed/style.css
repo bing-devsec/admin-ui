@@ -1,0 +1,54 @@
+.article-html-embed {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 1em 0;
+    border: 1px solid #cdd8df;
+    border-radius: 7px;
+    overflow: hidden;
+    background: #fff;
+    color: #283e50;
+    text-align: start;
+}
+.article-figure .article-html-embed { margin: 0; }
+.article-html-embed > summary {
+    padding: .65em 1em;
+    cursor: pointer;
+    background: #f4f7f9;
+    font-weight: 600;
+}
+.article-html-embed > summary::marker { color: #516b7d; }
+.article-html-embed > summary:focus-visible, .article-html-embed-actions button:focus-visible {
+    outline: 2px solid #176789;
+    outline-offset: -2px;
+}
+.article-html-embed .article-html-embed-open, .article-html-embed[open] .article-html-embed-closed { display: none; }
+.article-html-embed[open] .article-html-embed-open { display: inline; }
+.article-html-embed-actions { display: flex; align-items: center; gap: .65em; padding: .25em .8em; }
+.article-html-embed-status { flex: 1; color: #40596b; font-size: .9em; }
+.article-html-embed-actions button {
+    min-height: 32px;
+    padding: .2em .5em;
+    border: 0;
+    border-radius: 4px;
+    color: #245d77;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-size: .9em;
+}
+.article-html-embed-actions button:hover { background: #eaf2f5; }
+.article-html-embed-actions [hidden] { display: none; }
+.article-html-embed-stage iframe {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: clamp(430px, 72vh, 800px);
+    height: clamp(430px, 72dvh, 800px);
+    border: 0;
+    border-top: 1px solid #dae2e6;
+    background: white;
+}
+.article-html-embed:fullscreen { display: flex; flex-direction: column; width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; }
+.article-html-embed:fullscreen::details-content, .article-html-embed:fullscreen .article-html-embed-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.article-html-embed:fullscreen .article-html-embed-stage { flex: 1; min-height: 0; }
+.article-html-embed:fullscreen iframe { height: 100%; }

@@ -432,8 +432,8 @@ export function moveMarkdownListItemIndent(value: string, caret: number, shiftKe
 }
 
 export function createMarkdownTable(rows: number, cols: number): string {
-    const safeRows = normalizeTableSize(rows, 1, 20);
-    const safeCols = normalizeTableSize(cols, 1, 10);
+    const safeRows = normalizeTableSize(rows, 1, 100);
+    const safeCols = normalizeTableSize(cols, 1, 20);
     const headers = Array.from({ length: safeCols }, (_, index) => `列 ${index + 1}`);
     const divider = Array.from({ length: safeCols }, () => '---');
     const bodyRows = Array.from({ length: safeRows }, () => Array.from({ length: safeCols }, () => '').join(' | '));

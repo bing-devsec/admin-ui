@@ -4,6 +4,7 @@
         v-if="device === 'pc'"
         ref="root"
         class="article-body-ssr article-preview"
+        data-table-default-wrap="on"
         v-html="html"
     ></div>
 
@@ -35,18 +36,24 @@
 <script lang="ts" setup>
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { renderMarkdownToHtml, prewarmHighlighter } from '../utils/markdown';
+import { getTextSearchMatches } from '../utils/markdown-editor';
+import { installTableToolbar, syncTablePresentation } from '../utils/articleTableToolbar';
+import '../utils/htmlEmbed/style.css';
 import 'katex/dist/katex.min.css';
 
 const props = withDefaults(
     defineProps<{
         markdown: string;
         debounceMs?: number;
+        matchCase?: boolean;
+        active?: boolean;
         device?: 'pc' | 'phone' | 'tablet';
         deviceWidth?: number;
         deviceHeight?: number;
     }>(),
     {
         debounceMs: 200,
+        active: true,
         device: 'pc',
         deviceWidth: 375,
         deviceHeight: 812,
@@ -56,6 +63,8 @@ const props = withDefaults(
 const emit = defineEmits<{
     (event: 'rendered-html', html: string): void;
     (event: 'preview-scroll'): void;
+    (event: 'preview-selection', selection: { text: string; matches: number; selectedLength: number } | null): void;
+    (event: 'preview-find', text: string): void;
     (event: 'preview-layout-change'): void;
 }>();
 
@@ -201,7 +210,7 @@ ${cssLinks.value}
 </style>
 </head>
 <body>
-<div class="article-body-ssr" id="ssr-root">${html.value || ''}</div>
+<div class="article-body-ssr" id="ssr-root" data-table-default-wrap="off">${html.value || ''}</div>
 <scr` + `ipt>
   // srcdoc iframe 下，<a href="#fn1"> 等锚点会因为 base URL 回退到父页面而触发整页导航。
 	  // 这里拦截所有以 # 开头的链接，自己用 window.scrollTo 实现 iframe 内的页内跳转；
@@ -371,7 +380,7 @@ function shouldRotateFullscreen(): boolean {
  *  - 屏幕物理 Y 方向 ↔ 内容 X 方向反向（上滑=往右看 → scrollLeft+）
  * 实现：把原生 wheel/touch 的 dx/dy 映射到目标的 scrollTop/scrollLeft。
  */
-function bindRotatedScroll(target: HTMLElement) {
+function bindRotatedScroll(target: HTMLElement, verticalScroll = target) {
     // overscroll-behavior: contain 阻止 wheel/touch 在边界处冒泡到浏览器，
     // 避免触控板左右滑触发浏览器的前进/后退手势
     target.style.overscrollBehavior = 'contain';
@@ -387,7 +396,7 @@ function bindRotatedScroll(target: HTMLElement) {
             // 始终 preventDefault：即使到边界也要吞掉，不让浏览器拿去做页面横滑
             e.preventDefault();
             // 屏幕水平滚（dx>0，向右）→ 内容向下读 → scrollTop 增加
-            target.scrollTop += dx;
+            verticalScroll.scrollTop += dx;
             // 屏幕垂直滚（dy>0，向下）→ 内容向左移（即 scrollLeft 减小）
             target.scrollLeft -= dy;
         },
@@ -421,7 +430,7 @@ function bindRotatedScroll(target: HTMLElement) {
             // 跟手拖拽（rotate 90° 顺时针）：
             // 手指向左滑（dx<0）→ 内容向左跟随，等价于看下一行 → scrollTop 增加
             // 手指向上滑（dy<0）→ 内容向上跟随，等价于看本行右侧 → scrollLeft 增加
-            target.scrollTop -= dx;
+            verticalScroll.scrollTop -= dx;
             target.scrollLeft -= dy;
         },
         { passive: false }
@@ -441,6 +450,7 @@ const fullscreenState = {
 };
 
 const tableFsState = {
+    disposeToolbar: null as (() => void) | null,
     overlay: null as HTMLElement | null,
     triggerBtn: null as HTMLElement | null,
     escHandler: null as ((e: KeyboardEvent) => void) | null,
@@ -473,13 +483,19 @@ function closeCodeFullscreen() {
 function closeTableFullscreen() {
     const s = tableFsState;
     if (!s.overlay) return;
+    s.disposeToolbar?.();
+    s.disposeToolbar = null;
     s.overlay.remove();
     s.overlay = null;
     if (s.escHandler) {
         document.removeEventListener('keydown', s.escHandler);
         s.escHandler = null;
     }
-    s.triggerBtn?.focus();
+    const trigger = s.triggerBtn;
+    const focusTarget = trigger?.getClientRects().length
+        ? trigger
+        : trigger?.closest('.ssr-table-wrap')?.querySelector<HTMLElement>('.ssr-table-scroll');
+    focusTarget?.focus({ preventScroll: true });
     s.triggerBtn = null;
 }
 
@@ -601,17 +617,14 @@ function handleTableFullscreenClick(event: Event, scope: Document) {
     if (!target) return;
     const btn = target.closest('.ssr-table-fs-btn') as HTMLButtonElement | null;
     if (!btn) return;
-    // 表格全屏：仅手机/平板模式响应（PC 模式无意义）
-    if (props.device === 'pc') return;
+    if (tableFsState.overlay || scope !== iframeRef.value?.contentDocument) return;
 
     const wrap = btn.closest('.ssr-table-wrap') as HTMLElement | null;
     if (!wrap) return;
     const tableEl = wrap.querySelector('table') as HTMLTableElement | null;
     if (!tableEl) return;
 
-    // 跨 document 安全克隆：先在源 document 内 cloneNode，再 importNode 进外层 document
-    const clonedSource = tableEl.cloneNode(true) as HTMLTableElement;
-    const clonedTable = document.importNode(clonedSource, true) as HTMLTableElement;
+    const clonedTable = document.importNode(tableEl, true);
 
     const overlay = document.createElement('div');
     overlay.className = 'ssr-table-fs-overlay';
@@ -631,15 +644,28 @@ function handleTableFullscreenClick(event: Event, scope: Document) {
                     </button>
                 </div>
             </div>
-            <div class="ssr-table-fs-body"></div>
+            <div class="ssr-table-fs-body" data-table-default-wrap="off">
+                <div class="ssr-table-wrap">
+                    <div class="ssr-table-scroll" role="region" tabindex="0" aria-label="表格，左右方向键选择列"></div>
+                </div>
+            </div>
         </div>
     `;
     const bodyEl = overlay.querySelector('.ssr-table-fs-body') as HTMLElement;
-    bodyEl.appendChild(clonedTable);
+    const scroll = bodyEl.querySelector<HTMLElement>('.ssr-table-scroll')!;
+    scroll.appendChild(clonedTable);
     const mount = getOverlayMount();
     if (!mount) return;
     mount.appendChild(overlay);
 
+    const unbindToolbar = installTableToolbar(bodyEl);
+    tableFsState.disposeToolbar = () => {
+        if (tableEl.isConnected && tableEl.ownerDocument === iframeRef.value?.contentDocument) {
+            syncTablePresentation(clonedTable, tableEl);
+            updateTableOverflowFlag(wrap);
+        }
+        unbindToolbar();
+    };
     tableFsState.overlay = overlay;
     tableFsState.triggerBtn = btn;
 
@@ -650,11 +676,10 @@ function handleTableFullscreenClick(event: Event, scope: Document) {
     };
     document.addEventListener('keydown', tableFsState.escHandler);
 
-    // 伪横屏下，把垂直手势映射为表格容器的水平滚动
+    scroll.focus({ preventScroll: true });
     if (overlay.classList.contains('fs-rotate90')) {
-        bindRotatedScroll(bodyEl);
+        bindRotatedScroll(scroll, bodyEl);
     }
-    void scope;
 }
 
 function handleMermaidFullscreenClick(event: Event, scope: Document) {
@@ -669,7 +694,8 @@ function handleMermaidFullscreenClick(event: Event, scope: Document) {
     // ⚠ 必须 scope 到 .mermaid-content 内，避开按钮自身的 svg icon
     const contentEl = block.querySelector('.mermaid-content');
     const svgEl = contentEl ? (contentEl.querySelector('svg') as SVGElement | null) : null;
-    const sourceEl = (contentEl || block).querySelector('.mermaid-source');
+    const sourceEl = (contentEl || block).querySelector('.mermaid-source, .mermaid-error');
+    if (!svgEl && !sourceEl?.textContent?.trim()) return;
 
     const overlay = document.createElement('div');
     overlay.className = 'mermaid-fs-overlay';
@@ -728,7 +754,7 @@ function handleMermaidFullscreenClick(event: Event, scope: Document) {
         canvas.appendChild(cloned);
     } else if (sourceEl) {
         const pre = document.createElement('pre');
-        pre.className = 'mermaid-source';
+        pre.className = sourceEl.className;
         pre.textContent = sourceEl.textContent || '';
         canvas.appendChild(pre);
     }
@@ -736,6 +762,8 @@ function handleMermaidFullscreenClick(event: Event, scope: Document) {
     const mount = getOverlayMount();
     if (!mount) return;
     mount.appendChild(overlay);
+    // 移动预览的触发按钮在 iframe，弹层在外层文档；让键盘进入弹层。
+    overlay.querySelector<HTMLButtonElement>('[data-action="close"]')?.focus({ preventScroll: true });
 
     const s = mermaidFsState;
     s.scale = 1;
@@ -953,6 +981,7 @@ function observeTableOverflow(scope: Document) {
 // ============================================================
 let mermaidLib: typeof import('mermaid').default | null = null;
 let mermaidIdCounter = 0;
+let mermaidGeneration = 0;
 const MERMAID_FONT_FAMILY =
     '-apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", "Segoe UI", Arial, sans-serif';
 const MERMAID_THEME_CSS = `
@@ -966,8 +995,11 @@ const MERMAID_THEME_CSS = `
     line-height: 1.2;
   }
 `;
-async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
+async function renderMermaidBlocks(scope: HTMLElement | null) {
+    const generation = ++mermaidGeneration;
     if (!scope) return;
+    const isCurrent = () => generation === mermaidGeneration &&
+        scope === (props.device === 'pc' ? root.value : iframeRef.value?.contentDocument?.body);
     const blocks = scope.querySelectorAll<HTMLDivElement>(
         '.mermaid-block[data-mermaid-rendered="false"]'
     );
@@ -975,6 +1007,7 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
     if (!mermaidLib) {
         try {
             const mod = await import('mermaid');
+            if (!isCurrent()) return;
             mermaidLib = mod.default;
             mermaidLib.initialize({
                 startOnLoad: false,
@@ -994,11 +1027,18 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
                     diagramPadding: 12,
                 },
             });
-        } catch (_err) {
+        } catch {
+            if (!isCurrent()) return;
+            mermaidLib = null;
+            for (const block of blocks) {
+                if (block.isConnected) block.dataset.mermaidRendered = 'unavailable';
+            }
             return;
         }
     }
-    for (const block of Array.from(blocks)) {
+    for (const block of blocks) {
+        if (!isCurrent()) return;
+        if (!block.isConnected) continue;
         const content = block.querySelector('.mermaid-content') as HTMLElement | null;
         const target = content || block;
         const source = target.querySelector('.mermaid-source')?.textContent || '';
@@ -1007,14 +1047,28 @@ async function renderMermaidBlocks(scope: HTMLElement | Document | null) {
             continue;
         }
         const id = `mermaid-preview-${Date.now()}-${mermaidIdCounter++}`;
+        // Mermaid 在当前页面中测量 SVG。用独立容器隔离临时节点，也能在语法错误时完整清理。
+        const container = document.createElement('div');
+        container.setAttribute('aria-hidden', 'true');
+        Object.assign(container.style, {
+            position: 'fixed', inset: '0', visibility: 'hidden', overflow: 'hidden', pointerEvents: 'none',
+        });
+        document.body.appendChild(container);
         try {
-            const { svg } = await mermaidLib.render(id, source);
+            const { svg } = await mermaidLib.render(id, source, container);
+            if (!isCurrent() || !block.isConnected) continue;
             target.innerHTML = svg;
-            block.setAttribute('data-mermaid-rendered', 'true');
+            block.dataset.mermaidRendered = 'true';
         } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            target.innerHTML = `<pre class="mermaid-error">[Mermaid 渲染失败] ${msg}\n\n${source.replace(/[<&]/g, (c) => (c === '<' ? '&lt;' : '&amp;'))}</pre>`;
-            block.setAttribute('data-mermaid-rendered', 'true');
+            if (!isCurrent() || !block.isConnected) continue;
+            const error = target.ownerDocument.createElement('pre');
+            error.className = 'mermaid-error';
+            const message = err instanceof Error ? err.message : String(err);
+            error.textContent = `[Mermaid 渲染失败] ${message}\n\n${source}`;
+            target.replaceChildren(error);
+            block.dataset.mermaidRendered = 'true';
+        } finally {
+            container.remove();
         }
     }
 }
@@ -1030,7 +1084,7 @@ let unbindImageLayoutListeners: (() => void) | null = null;
 let previewLayoutChangeRaf = 0;
 
 function schedulePreviewLayoutChange() {
-    if (previewLayoutChangeRaf) return;
+    if (previewLayoutChangeRaf || (!root.value && !wrapRef.value)) return;
     previewLayoutChangeRaf = requestAnimationFrame(() => {
         previewLayoutChangeRaf = 0;
         emit('preview-layout-change');
@@ -1080,6 +1134,163 @@ function bindPreviewLayoutWatch(scope?: HTMLElement | Document | null) {
     schedulePreviewLayoutChange();
 }
 
+// 同一套选区监听用于桌面正文和当前设备的 iframe 文档。
+const iframeArticle = ref<HTMLElement | null>(null);
+const ignoredSelectionContent = 'button, input, textarea, script, style, [hidden], .ssr-code-head, .ssr-code-gutter, .katex-mathml, .article-table-toolbar';
+
+function readArticleText(start: Node, range?: Range): string {
+    const parts: string[] = [];
+    let separator = '';
+    const view = start.ownerDocument?.defaultView;
+    function visit(node: Node) {
+        if (range && !range.intersectsNode(node)) return;
+        if (node.nodeType === Node.TEXT_NODE) {
+            const begin = node === range?.startContainer ? range.startOffset : 0;
+            const end = node === range?.endContainer ? range.endOffset : undefined;
+            let text = (node.nodeValue || '').slice(begin, end);
+            if (!node.parentElement?.closest('pre')) {
+                text = text.replace(/[\t\n\r\f ]+/g, ' ');
+                if (separator || parts[parts.length - 1]?.endsWith(' ')) text = text.replace(/^ /, '');
+            }
+            if (text) {
+                if (parts.length && separator) parts.push(separator);
+                parts.push(text);
+                separator = '';
+            }
+            return;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const el = node as Element;
+        if (el.matches(ignoredSelectionContent)) return;
+        const style = view?.getComputedStyle(el);
+        if (style?.display === 'none' || style?.visibility === 'hidden') return;
+        if (el.tagName === 'BR') {
+            parts.push('\n');
+            separator = '';
+            return;
+        }
+        const isBlock = /^(block|list-item|flex|grid|table|table-row|flow-root)$/.test(style?.display || '');
+        if (isBlock) separator = '\n';
+        for (const child of el.childNodes) visit(child);
+        if (isBlock) separator = '\n';
+        else if (style?.display === 'table-cell') separator = '\t';
+    }
+    visit(start);
+    return parts.join('');
+}
+
+function selectedArticleText(scope: HTMLElement) {
+    const doc = scope.ownerDocument;
+    const host = doc === document ? scope : iframeRef.value;
+    if (!scope.isConnected || !host?.getClientRects().length) return null;
+    if (doc !== document && (doc !== iframeRef.value?.contentDocument || document.activeElement !== iframeRef.value)) return null;
+    if (doc.activeElement?.matches('input, textarea')) return null;
+    const selection = doc.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
+    const range = selection.getRangeAt(0);
+    const common = range.commonAncestorContainer;
+    if (!scope.contains(common)) return null;
+    for (const node of [range.startContainer, range.endContainer]) {
+        const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+        if (element?.closest(ignoredSelectionContent)) return null;
+    }
+    const query = readArticleText(common, range);
+    if (!query) return null;
+    const spansControls = common.nodeType === Node.ELEMENT_NODE &&
+        Array.from((common as Element).querySelectorAll(ignoredSelectionContent)).some(el => range.intersectsNode(el));
+    const text = spansControls ? query : selection.toString();
+    return text ? { text, query } : null;
+}
+
+// srcdoc 内容变化后浏览器会更换 document，立即释放旧文档。
+watch(iframeSrcdoc, () => { iframeArticle.value = null; }, { flush: 'sync' });
+
+const activePreview = computed(() => props.active ? (props.device === 'pc' ? root.value : iframeArticle.value) : null);
+// v-html replaces the desktop children in place, whereas srcdoc replaces the entire mobile document.
+watch([activePreview, html], async ([scope], _, onCleanup) => {
+    if (!scope?.querySelector('.article-html-embed[data-html-embed-id]')) return;
+    let current = true;
+    let dispose: (() => void) | undefined;
+    onCleanup(() => { current = false; dispose?.(); });
+    const { mountHtmlEmbeds } = await import('../utils/htmlEmbed/player');
+    if (current) dispose = mountHtmlEmbeds(scope, id => '/api/user/article/html-embed/' + id);
+}, { flush: 'post' });
+watch(
+    activePreview,
+    (el, _, onCleanup) => {
+        if (!el) return;
+        const scope = el;
+        const doc = scope.ownerDocument;
+        let corpus: string | null = null;
+        let lastText = '';
+        let lastQuery = '';
+        let lastCase = props.matchCase;
+        let frame = 0;
+        function clear() {
+            if (frame) cancelAnimationFrame(frame);
+            frame = 0;
+            if (lastText) emit('preview-selection', null);
+            lastText = '';
+        }
+        function update() {
+            frame = 0;
+            const selection = selectedArticleText(scope);
+            if (!selection) return clear();
+            const { text, query } = selection;
+            if (lastText === text && lastQuery === query && lastCase === props.matchCase && corpus !== null) return;
+            corpus ??= readArticleText(scope);
+            lastText = text;
+            lastQuery = query;
+            lastCase = props.matchCase;
+            emit('preview-selection', {
+                text,
+                selectedLength: Array.from(text).length,
+                matches: getTextSearchMatches(corpus, query, { matchCase: props.matchCase }).length,
+            });
+        }
+        function schedule() {
+            if (!frame) frame = requestAnimationFrame(update);
+        }
+        function onFind(event: KeyboardEvent) {
+            if (event.defaultPrevented || event.altKey || event.shiftKey || event.metaKey === event.ctrlKey || event.key.toLowerCase() !== 'f') return;
+            const target = event.target as Element | null;
+            if (target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+            const selection = selectedArticleText(scope);
+            if (!selection) return;
+            event.preventDefault();
+            emit('preview-find', selection.text);
+        }
+        const observer = new MutationObserver(() => {
+            corpus = null;
+            if (lastText) schedule();
+        });
+        observer.observe(scope, { childList: true, characterData: true, subtree: true, attributes: true });
+        doc.addEventListener('selectionchange', schedule);
+        doc.addEventListener('focusin', schedule);
+        doc.addEventListener('keydown', onFind);
+        if (doc !== document) {
+            doc.defaultView?.addEventListener('blur', clear);
+            doc.defaultView?.addEventListener('focus', schedule);
+        }
+        const stopCase = watch(() => props.matchCase, schedule);
+        const unbindToolbar = installTableToolbar(scope);
+        onCleanup(() => {
+            unbindToolbar();
+            stopCase();
+            observer.disconnect();
+            doc.removeEventListener('selectionchange', schedule);
+            doc.removeEventListener('focusin', schedule);
+            doc.removeEventListener('keydown', onFind);
+            if (doc !== document) {
+                doc.defaultView?.removeEventListener('blur', clear);
+                doc.defaultView?.removeEventListener('focus', schedule);
+            }
+            clear();
+        });
+    },
+    { flush: 'post' }
+);
+
 function bindIframeScroll(doc: Document) {
     unbindIframeScroll?.();
     const win = doc.defaultView;
@@ -1102,6 +1313,7 @@ function handleIframeLoad() {
     if (!iframe) return;
     const doc = iframe.contentDocument;
     if (!doc) return;
+    iframeArticle.value = doc.getElementById('ssr-root');
     bindCodeCopy(doc);
     bindCodeToggle(doc);
     bindPreviewLayoutWatch(doc);
@@ -1227,12 +1439,15 @@ watch(
         void nextTick().then(() => {
             if (props.device === 'pc') {
                 bindPreviewLayoutWatch(root.value);
+                void renderMermaidBlocks(root.value).finally(schedulePreviewLayoutChange);
             }
         });
     }
 );
 
 onBeforeUnmount(() => {
+    renderToken++;
+    mermaidGeneration++;
     if (timer) window.clearTimeout(timer);
     if (previewLayoutChangeRaf) {
         cancelAnimationFrame(previewLayoutChangeRaf);

@@ -6,6 +6,9 @@
 //   2) heading id 生成、KaTeX、Shiki、mermaid 占位符等规则保持一致；
 //   3) COS srcset 注入 / 表格滚动外壳 / admonition 等也全部保留。
 import MarkdownIt from 'markdown-it';
+import markdownCaptions from './markdownCaptions';
+import htmlEmbed from './htmlEmbed/markdown';
+import { renderArticleTableToolbar } from './articleTableToolbarMarkup';
 // @ts-ignore - markdown-it-footnote 没有官方类型声明
 import footnotePlugin from 'markdown-it-footnote';
 import katex from 'katex';
@@ -29,6 +32,8 @@ const md = new MarkdownIt({
 
 // 启用 [^1] 脚注语法：[^1] 渲染为可点击上标 → 跳到底部 [^1]: ... 定义；定义末尾自动加 ↩ 返回锚点
 md.use(footnotePlugin);
+md.use(htmlEmbed, { sourceLines: true });
+md.use(markdownCaptions, { sourceLines: true });
 
 // ============================================================
 // 提示块（Admonition）：!!! tips/info/warning/error/success/thinking/example
@@ -662,17 +667,18 @@ md.renderer.rules.fence = function (tokens, idx, _options, env: RenderEnv) {
     );
 };
 
-// 图片：补 .article-img / lazy / async
-md.renderer.rules.image = function (tokens, idx) {
+// 由默认 renderer 转义 src/alt/title，保留正文图片的既有布局和源码行号。
+const defaultImage = md.renderer.rules.image!;
+md.renderer.rules.image = function (tokens, idx, options, env, self) {
     const token = tokens[idx];
-    const src = token.attrGet('src') || '';
-    const title = token.attrGet('title') || '';
-    const alt = token.content || '';
-    const lineAttr = token.attrGet('data-md-line');
-    return `<img class="article-img article-img-zoomable" src="${src}" alt="${alt}"${title ? ` title="${title}"` : ''}${lineAttr ? ` data-md-line="${lineAttr}"` : ''} loading="lazy" decoding="async" style="width: 100%; height: auto; max-width: 100%; display: block;">`;
+    token.attrJoin('class', 'article-img article-img-zoomable');
+    token.attrSet('loading', 'lazy');
+    token.attrSet('decoding', 'async');
+    token.attrSet('style', 'width: 100%; height: auto; max-width: 100%; display: block;');
+    return defaultImage(tokens, idx, options, env, self);
 };
 
-// 表格：外包横向滚动壳 + 全屏按钮
+// 每张表格单独滚动，工具栏固定在外层容器中。
 const defaultTableOpen = md.renderer.rules.table_open || function (tokens, idx, options, _env, self) {
     return self.renderToken(tokens, idx, options);
 };
@@ -681,16 +687,10 @@ const defaultTableClose = md.renderer.rules.table_close || function (tokens, idx
 };
 md.renderer.rules.table_open = function (tokens, idx, options, env, self) {
     const token = tokens[idx];
-    const fsBtn =
-        '<button class="ssr-table-fs-btn" type="button" aria-label="全屏查看表格" title="全屏">' +
-        '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">' +
-        '<path fill="currentColor" d="M5 5h6v2H7v4H5V5zm14 0v6h-2V7h-4V5h6zM5 19v-6h2v4h4v2H5zm14 0h-6v-2h4v-4h2v6z"/>' +
-        '</svg>' +
-        '</button>';
-    return `<div class="ssr-table-wrap"${sourceLineAttr(token)}>${fsBtn}<div class="ssr-table-scroll">${defaultTableOpen(tokens, idx, options, env, self)}`;
+    return `<div class="ssr-table-wrap"${sourceLineAttr(token)}><div class="ssr-table-scroll" role="region" tabindex="0" aria-label="表格，左右方向键选择列">${defaultTableOpen(tokens, idx, options, env, self)}`;
 };
 md.renderer.rules.table_close = function (tokens, idx, options, env, self) {
-    return `${defaultTableClose(tokens, idx, options, env, self)}</div></div>`;
+    return `${defaultTableClose(tokens, idx, options, env, self)}</div>${renderArticleTableToolbar()}</div>`;
 };
 
 // heading id：与前台保持一致
@@ -738,41 +738,38 @@ function buildCosSrcset(rawUrl: string): string | null {
 }
 
 function ensureImgAttributes(html: string): string {
-    return html.replace(/<img\b([^>]*)>/gi, (_full, attrs: string) => {
-        let next = attrs;
-
-        if (/\bclass\s*=\s*("|')/i.test(next)) {
-            next = next.replace(/\bclass\s*=\s*("|')([^"']*)\1/i, (_m, quote: string, value: string) => {
+    // 引号内的 > 不结束标签；逐个属性读取，避免把 data-class 或 title 里的文字当成属性。
+    return html.replace(/<img\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi, (_full, attrs: string) => {
+        const values = new Map<string, string>();
+        let lastAttributeEnd = 0;
+        let next = attrs.replace(/([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g,
+            (full, name: string, doubleQuoted: string | undefined, singleQuoted: string | undefined, unquoted: string | undefined, offset: number) => {
+                const key = name.toLowerCase();
+                const value = doubleQuoted ?? singleQuoted ?? unquoted ?? '';
+                values.set(key, value);
+                lastAttributeEnd = offset + full.length;
+                if (key !== 'class') return full;
                 const classes = new Set(value.split(/\s+/).filter(Boolean));
                 classes.add('article-img');
                 classes.add('article-img-zoomable');
-                return `class=${quote}${Array.from(classes).join(' ')}${quote}`;
+                const quote = singleQuoted === undefined ? '"' : "'";
+                return `${name}=${quote}${Array.from(classes).join(' ')}${quote}`;
             });
-        } else {
-            next = ` class="article-img article-img-zoomable"` + next;
-        }
+        const selfClosing = /\/\s*$/.test(attrs) && lastAttributeEnd <= attrs.lastIndexOf('/');
+        if (selfClosing) next = next.replace(/\/\s*$/, '');
 
-        if (!/\bloading\s*=/i.test(next)) {
-            next += ' loading="lazy"';
-        }
-        if (!/\bdecoding\s*=/i.test(next)) {
-            next += ' decoding="async"';
-        }
+        if (!values.has('class')) next += ' class="article-img article-img-zoomable"';
+        if (!values.has('loading')) next += ' loading="lazy"';
+        if (!values.has('decoding')) next += ' decoding="async"';
 
-        if (!/\bsrcset\s*=/i.test(next)) {
-            const srcMatch = next.match(/\bsrc\s*=\s*("|')([^"']+)\1/i);
-            if (srcMatch) {
-                const srcset = buildCosSrcset(srcMatch[2]);
-                if (srcset) {
-                    next += ` srcset="${srcset}"`;
-                    if (!/\bsizes\s*=/i.test(next)) {
-                        next += ` sizes="(max-width: 576px) 100vw, (max-width: 992px) 90vw, 720px"`;
-                    }
-                }
+        if (!values.has('srcset')) {
+            const srcset = buildCosSrcset(values.get('src') || '');
+            if (srcset) {
+                next += ` srcset="${srcset}"`;
+                if (!values.has('sizes')) next += ' sizes="(max-width: 576px) 100vw, (max-width: 992px) 90vw, 720px"';
             }
         }
-
-        return `<img${next}>`;
+        return `<img${next}${selfClosing ? '/' : ''}>`;
     });
 }
 
