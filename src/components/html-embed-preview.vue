@@ -6,7 +6,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import MarkdownIt from 'markdown-it';
 import markdownHtmlEmbed from '@/utils/htmlEmbed/markdown';
-import { mountHtmlEmbeds } from '@/utils/htmlEmbed/player';
+import { mountAdminHtmlEmbeds } from '@/utils/adminHtmlEmbed';
 import '@/utils/htmlEmbed/style.css';
 
 const props = defineProps<{ id: string }>();
@@ -22,7 +22,7 @@ onMounted(() => {
     const details = root?.querySelector('details');
     if (!root || !details) return;
     details.open = true;
-    dispose = mountHtmlEmbeds(root, id => '/api/user/article/html-embed/' + id);
+    dispose = mountAdminHtmlEmbeds(root);
 });
 onBeforeUnmount(() => dispose?.());
 </script>

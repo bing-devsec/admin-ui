@@ -1212,8 +1212,8 @@ watch([activePreview, html], async ([scope], _, onCleanup) => {
     let current = true;
     let dispose: (() => void) | undefined;
     onCleanup(() => { current = false; dispose?.(); });
-    const { mountHtmlEmbeds } = await import('../utils/htmlEmbed/player');
-    if (current) dispose = mountHtmlEmbeds(scope, id => '/api/user/article/html-embed/' + id);
+    const { mountAdminHtmlEmbeds } = await import('../utils/adminHtmlEmbed');
+    if (current) dispose = mountAdminHtmlEmbeds(scope);
 }, { flush: 'post' });
 watch(
     activePreview,

@@ -1,4 +1,5 @@
 type ResolveUrl = (id: string) => string;
+type EmbedCredentials = 'omit' | 'same-origin';
 
 const idFormat = /^[a-f0-9]{32}$/;
 const defaultUrl: ResolveUrl = id => '/api-backend/user/article/html-embed/' + id;
@@ -10,7 +11,7 @@ const policy = [
     "form-action 'none'", "base-uri 'none'", "frame-src 'none'", "object-src 'none'",
 ].join('; ');
 
-function bind(block: HTMLDetailsElement, resolveUrl: ResolveUrl): (() => void) | undefined {
+function bind(block: HTMLDetailsElement, resolveUrl: ResolveUrl, credentials: EmbedCredentials): (() => void) | undefined {
     const doc = block.ownerDocument;
     const win = doc.defaultView;
     const id = block.dataset.htmlEmbedId || '';
@@ -44,7 +45,7 @@ function bind(block: HTMLDetailsElement, resolveUrl: ResolveUrl): (() => void) |
         try {
             if (source === undefined) {
                 const response = await win!.fetch(resolveUrl(id), {
-                    signal: current.signal, credentials: 'omit', redirect: 'error',
+                    signal: current.signal, credentials, redirect: 'error',
                 });
                 if (response.status === 404) throw new Error('找不到这个演示文件。');
                 if (!response.ok || response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'text/plain')
@@ -94,10 +95,14 @@ function bind(block: HTMLDetailsElement, resolveUrl: ResolveUrl): (() => void) |
     };
 }
 
-export function mountHtmlEmbeds(root: ParentNode, resolveUrl: ResolveUrl = defaultUrl): () => void {
+export function mountHtmlEmbeds(
+    root: ParentNode,
+    resolveUrl: ResolveUrl = defaultUrl,
+    credentials: EmbedCredentials = 'omit',
+): () => void {
     const disposers: (() => void)[] = [];
     for (const block of root.querySelectorAll<HTMLDetailsElement>('details.article-html-embed[data-html-embed-id]')) {
-        const dispose = bind(block, resolveUrl);
+        const dispose = bind(block, resolveUrl, credentials);
         if (dispose) disposers.push(dispose);
     }
     return () => { for (const dispose of disposers.splice(0)) dispose(); };

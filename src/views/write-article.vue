@@ -2293,8 +2293,8 @@ async function handleImageImport(event: Event) {
 
     imageUploading.value = true;
     try {
-        const uploaded = await uploadArticleImage(file);
-        insertUploadedImage(uploaded.url, file.name.replace(/\.[^.]+$/i, ''));
+        const [uploaded, dimensions] = await Promise.all([uploadArticleImage(file), readImageDimensions(file)]);
+        insertUploadedImage(uploaded.url, file.name.replace(/\.[^.]+$/i, ''), dimensions);
         ElNotification({
             title: '图片已上传',
             message: '图片和图注已插入，不需要图注时可删除图注行',
@@ -2345,9 +2345,43 @@ async function uploadArticleImage(file: File): Promise<{ url: string }> {
     return data;
 }
 
-function insertUploadedImage(url: string, title: string) {
+type ImageDimensions = { width: number; height: number };
+
+function readImageDimensions(file: File): Promise<ImageDimensions | undefined> {
+    return new Promise<ImageDimensions | undefined>(resolve => {
+        const image = new Image();
+        const reader = new FileReader();
+        // 尺寸只是排版提示，异常文件不应一直阻塞已完成的上传。
+        const timeout = window.setTimeout(() => finish(), 5000);
+        function finish(dimensions?: ImageDimensions) {
+            window.clearTimeout(timeout);
+            reader.onload = null;
+            if (reader.readyState === FileReader.LOADING) reader.abort();
+            resolve(dimensions);
+        }
+        image.onload = () => {
+            const { naturalWidth: width, naturalHeight: height } = image;
+            if (Number.isSafeInteger(width) && width > 0 && Number.isSafeInteger(height) && height > 0) {
+                finish({ width, height });
+            } else {
+                finish();
+            }
+        };
+        image.onerror = () => finish();
+        reader.onerror = () => finish();
+        reader.onload = () => {
+            if (typeof reader.result === 'string') image.src = reader.result;
+            else finish();
+        };
+        // 线上 img-src 允许 data:；这里在本地读图，无需下载已上传的文件。
+        reader.readAsDataURL(file);
+    }).catch(() => undefined);
+}
+
+function insertUploadedImage(url: string, title: string, dimensions?: ImageDimensions) {
     const normalizedTitle = normalizeImageTitle(title);
-    const image = `<img src="${escapeHtmlAttribute(url)}" alt="${escapeHtmlAttribute(normalizedTitle)}" />\n\n`;
+    const size = dimensions ? ` width="${dimensions.width}" height="${dimensions.height}" style="aspect-ratio: ${dimensions.width} / ${dimensions.height};"` : '';
+    const image = `<img src="${escapeHtmlAttribute(url)}" alt="${escapeHtmlAttribute(normalizedTitle)}"${size} />\n\n`;
     insertText(image + SNIPPETS.caption, CAPTION_PLACEHOLDER);
 }
 
